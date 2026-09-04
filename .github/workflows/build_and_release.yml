@@ -1,0 +1,89 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Build Android Release (APK & AAB)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Build Android App Bundle (AAB)
+        run: flutter build appbundle --release
+
+      - name: Prepare Release Artifacts
+        run: |
+          mkdir -p release_assets
+          cp build/app/outputs/flutter-apk/app-release.apk release_assets/5passi-app-release.apk
+          cp build/app/outputs/bundle/release/app-release.aab release_assets/5passi-app-release.aab
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: 5passi-android-binaries
+          path: release_assets/*
+          retention-days: 30
+
+      # Create or update Release when pushing a version tag (e.g. v1.0.0)
+      - name: Create GitHub Release (on Tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release_assets/5passi-app-release.apk
+            release_assets/5passi-app-release.aab
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Automatic rolling pre-release on every push to main
+      - name: Publish Rolling Latest Release (on Main)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: 5passi - Latest Build
+          prerelease: true
+          files: |
+            release_assets/5passi-app-release.apk
+            release_assets/5passi-app-release.aab
+          body: |
+            🚀 **Ultima versione compilata di 5passi** generata automaticamente da GitHub Actions.
+            
+            ### 📥 Download Pacchetti:
+            * [📲 **5passi-app-release.apk**](https://github.com/${{ github.repository }}/releases/download/latest/5passi-app-release.apk) (Installabile direttamente su qualsiasi dispositivo Android)
+            * [📦 **5passi-app-release.aab**](https://github.com/${{ github.repository }}/releases/download/latest/5passi-app-release.aab) (Android App Bundle per Google Play)
+            
+            *Realizzato con **Google Antigravity**.*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
