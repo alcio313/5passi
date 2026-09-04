@@ -1,0 +1,41 @@
+name: live_map_tracker
+description: "5passi Mobile - Real-time E2EE GPS tracking with screen-off background support"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Map rendering and geospatial calculations
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  # Native GPS and continuous background execution
+  geolocator: ^13.0.2
+  flutter_background_service: ^5.1.0
+  flutter_local_notifications: ^18.0.1
+
+  # End-to-End Encryption (AES-GCM-256 + PBKDF2 HMAC-SHA256)
+  cryptography: ^2.7.2
+
+  # Real-time MQTT networking
+  mqtt_client: ^10.5.0
+
+  # State management & persistence
+  provider: ^6.1.2
+  shared_preferences: ^2.3.5
+
+  # UI utilities
+  intl: ^0.20.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
