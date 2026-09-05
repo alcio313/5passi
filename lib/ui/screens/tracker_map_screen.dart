@@ -43,51 +43,6 @@ class _TrackerMapScreenState extends State<TrackerMapScreen> {
     );
   }
 
-  void _confirmLeaveRoom(BuildContext context, TrackerProvider tracker) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.exit_to_app, color: AppColors.danger),
-            SizedBox(width: 8),
-            Text(
-              'Esci dalla Stanza',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          'Sei sicuro di voler uscire da "${tracker.groupDisplayName}"? Il tracciamento GPS verrà interrotto.',
-          style: const TextStyle(color: Colors.white70, fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annulla', style: TextStyle(color: Colors.white60)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.danger,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              tracker.leaveRoom();
-            },
-            child: const Text('Esci'),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -111,102 +66,75 @@ class _TrackerMapScreenState extends State<TrackerMapScreen> {
             cartoApiKey: tracker.cartoKey,
           ),
 
-          // 🔝 Top Bar: Exit button & Room Badge / Participants Count
+          // 🔝 Top Bar: Room Badge & Participants Count
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Row(
-                children: [
-                  // Exit Room Button (In alto a sinistra)
-                  SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: FloatingActionButton(
-                      heroTag: 'exit_room_btn',
-                      mini: true,
-                      onPressed: () => _confirmLeaveRoom(context, tracker),
-                      backgroundColor: AppColors.surface,
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        side: const BorderSide(color: AppColors.danger, width: 1.5),
-                      ),
-                      tooltip: 'Esci dalla Stanza',
-                      child: const Icon(Icons.exit_to_app, color: AppColors.danger, size: 22),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: GestureDetector(
+                  onTap: () => _showParticipants(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface.withValues(alpha: 0.94),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: AppColors.border, width: 1.5),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black45,
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Live green pulse dot
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.success,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // Room Name
+                        Text(
+                          tracker.groupDisplayName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+
+                        // E2EE Lock Icon
+                        const Icon(Icons.lock, color: AppColors.success, size: 14),
+                        const SizedBox(width: 6),
+
+                        const Text('•', style: TextStyle(color: Colors.white38)),
+                        const SizedBox(width: 6),
+
+                        // Participants Count
+                        const Icon(Icons.people, color: AppColors.radarCore, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$onlineCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 10),
-
-                  // Room Badge
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => _showParticipants(context),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface.withValues(alpha: 0.94),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: AppColors.border, width: 1.5),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black45,
-                              blurRadius: 10,
-                              offset: Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // Live green pulse dot
-                            Container(
-                              width: 10,
-                              height: 10,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: AppColors.success,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-
-                            // Room Name
-                            Flexible(
-                              child: Text(
-                                tracker.groupDisplayName,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-
-                            // E2EE Lock Icon
-                            const Icon(Icons.lock, color: AppColors.success, size: 14),
-                            const SizedBox(width: 6),
-
-                            const Text('•', style: TextStyle(color: Colors.white38)),
-                            const SizedBox(width: 6),
-
-                            // Participants Count
-                            const Icon(Icons.people, color: AppColors.radarCore, size: 16),
-                            const SizedBox(width: 4),
-                            Text(
-                              '$onlineCount',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
