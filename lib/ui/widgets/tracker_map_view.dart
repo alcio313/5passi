@@ -75,7 +75,7 @@ class TrackerMapView extends StatelessWidget {
       markers.add(
         Marker(
           point: userPosition!,
-          width: 120,
+          width: 180,
           height: 90,
           child: RadarMarkerWidget(
             label: userName,
@@ -93,7 +93,7 @@ class TrackerMapView extends StatelessWidget {
         markers.add(
           Marker(
             point: peer.currentLatLng!,
-            width: 120,
+            width: 180,
             height: 90,
             child: RadarMarkerWidget(
               label: peer.name,

@@ -50,6 +50,7 @@ class _RadarMarkerWidgetState extends State<RadarMarkerWidget>
       children: [
         // Senior-friendly high-contrast name badge
         Container(
+          constraints: const BoxConstraints(maxWidth: 170),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
             color: const Color(0xFF0F172A).withOpacity(0.92),
@@ -72,12 +73,16 @@ class _RadarMarkerWidgetState extends State<RadarMarkerWidget>
                   ),
                 ),
               ],
-              Text(
-                widget.label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
+              Flexible(
+                child: Text(
+                  widget.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ],
