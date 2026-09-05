@@ -57,6 +57,9 @@ class BackgroundTrackingManager {
     required String myId,
     required String myName,
     required String myColorHex,
+    String? brokerHost,
+    String? brokerUsername,
+    String? brokerPassword,
   }) {
     _service.invoke('update_config', {
       'roomId': roomId,
@@ -64,6 +67,9 @@ class BackgroundTrackingManager {
       'myId': myId,
       'myName': myName,
       'myColorHex': myColorHex,
+      'brokerHost': brokerHost,
+      'brokerUsername': brokerUsername,
+      'brokerPassword': brokerPassword,
     });
   }
 
@@ -103,6 +109,9 @@ void onStartBackgroundService(ServiceInstance service) async {
   String? myId;
   String? myName;
   String? myColorHex;
+  String? brokerHost;
+  String? brokerUsername;
+  String? brokerPassword;
   bool isTracking = false;
 
   double? lastLat;
@@ -117,11 +126,20 @@ void onStartBackgroundService(ServiceInstance service) async {
     myId = event['myId'] as String?;
     myName = event['myName'] as String?;
     myColorHex = event['myColorHex'] as String?;
+    brokerHost = event['brokerHost'] as String?;
+    brokerUsername = event['brokerUsername'] as String?;
+    brokerPassword = event['brokerPassword'] as String?;
 
     if (password != null && roomId != null && myId != null) {
       await cryptoService.deriveKey(password: password!, roomId: roomId!);
       if (!mqttService.isConnected) {
-        await mqttService.connect(roomId: roomId!, myId: myId!);
+        await mqttService.connect(
+          roomId: roomId!,
+          myId: myId!,
+          brokerHost: brokerHost,
+          username: brokerUsername,
+          password: brokerPassword,
+        );
       }
     }
   });
@@ -184,7 +202,11 @@ void onStartBackgroundService(ServiceInstance service) async {
         lastLng = position.longitude;
 
         if (!mqttService.isConnected) {
-          await mqttService.connect(roomId: roomId!, myId: myId!);
+          await mqttService.connect(
+            roomId: roomId!,
+            myId: myId!,
+            brokerHost: brokerHost,
+          );
         }
 
         final posPayload = {

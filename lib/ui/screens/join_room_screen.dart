@@ -17,6 +17,7 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
   late final TextEditingController _pwdController;
   late final TextEditingController _nameController;
   late final TextEditingController _cartoKeyController;
+  late final TextEditingController _brokerController;
 
   bool _obscurePwd = true;
   bool _isLoading = false;
@@ -30,7 +31,13 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
     _pwdController = TextEditingController();
     _nameController = TextEditingController(text: tracker.myName);
     _cartoKeyController = TextEditingController(text: tracker.cartoKey);
+    _brokerController = TextEditingController(text: tracker.brokerHost);
+    _brokerUserController = TextEditingController(text: tracker.brokerUsername);
+    _brokerPasswordController = TextEditingController(text: tracker.brokerPassword);
   }
+
+  late final TextEditingController _brokerUserController;
+  late final TextEditingController _brokerPasswordController;
 
   @override
   void dispose() {
@@ -38,6 +45,9 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
     _pwdController.dispose();
     _nameController.dispose();
     _cartoKeyController.dispose();
+    _brokerController.dispose();
+    _brokerUserController.dispose();
+    _brokerPasswordController.dispose();
     super.dispose();
   }
 
@@ -52,15 +62,31 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
       password: _pwdController.text,
       userName: _nameController.text,
       cartoKey: _cartoKeyController.text,
+      brokerHost: _brokerController.text,
+      brokerUsername: _brokerUserController.text,
+      brokerPassword: _brokerPasswordController.text,
     );
 
     setState(() => _isLoading = false);
 
     if (!success && mounted) {
+      final errorDetail = tracker.lastError;
+      final msg = (errorDetail != null && errorDetail.isNotEmpty)
+          ? 'Errore MQTT: $errorDetail'
+          : 'Errore di connessione al broker MQTT. Verifica la rete o prova il broker alternativo nelle Opzioni.';
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Errore di connessione al broker MQTT. Riprova.'),
+        SnackBar(
+          content: Text(msg),
           backgroundColor: AppColors.danger,
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'Opzioni',
+            textColor: Colors.white,
+            onPressed: () {
+              setState(() => _showAdvanced = true);
+            },
+          ),
         ),
       );
     }
@@ -204,13 +230,95 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                       color: AppColors.radarCore,
                     ),
                     label: Text(
-                      _showAdvanced ? 'Nascondi Opzioni Mappa' : 'Opzioni Mappa (Chiave CARTO)',
+                      _showAdvanced ? 'Nascondi Opzioni Avanzate' : 'Opzioni Avanzate (Broker MQTT e Mappa)',
                       style: const TextStyle(color: AppColors.radarCore, fontSize: 13),
                     ),
                   ),
 
                   if (_showAdvanced) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 8),
+
+                    // MQTT Broker Host Field
+                    TextFormField(
+                      controller: _brokerController,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'Broker MQTT Host',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        hintText: '02c32905ccdb4e97b9cd3860b9ae6f14.s1.eu.hivemq.cloud',
+                        hintStyle: const TextStyle(color: Colors.white30),
+                        prefixIcon: const Icon(Icons.hub_outlined, color: AppColors.radarCore),
+                        suffixIcon: PopupMenuButton<String>(
+                          icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
+                          tooltip: 'Seleziona broker MQTT',
+                          onSelected: (val) {
+                            setState(() {
+                              _brokerController.text = val;
+                            });
+                          },
+                          itemBuilder: (context) => const [
+                            PopupMenuItem(
+                              value: '02c32905ccdb4e97b9cd3860b9ae6f14.s1.eu.hivemq.cloud',
+                              child: Text('HiveMQ Cloud UE Dedicato (TLS 8883)'),
+                            ),
+                            PopupMenuItem(
+                              value: 'broker.emqx.io',
+                              child: Text('broker.emqx.io (Pubblico - TLS 8883)'),
+                            ),
+                            PopupMenuItem(
+                              value: 'broker.hivemq.com',
+                              child: Text('broker.hivemq.com (Pubblico Alternativo)'),
+                            ),
+                          ],
+                        ),
+                        filled: true,
+                        fillColor: AppColors.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: AppColors.border),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // MQTT Username Field
+                    TextFormField(
+                      controller: _brokerUserController,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'MQTT Username (se richiesto dal broker)',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        prefixIcon: const Icon(Icons.account_circle_outlined, color: AppColors.radarCore),
+                        filled: true,
+                        fillColor: AppColors.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: AppColors.border),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // MQTT Password Field
+                    TextFormField(
+                      controller: _brokerPasswordController,
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'MQTT Password (se richiesto dal broker)',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        prefixIcon: const Icon(Icons.password_outlined, color: AppColors.radarCore),
+                        filled: true,
+                        fillColor: AppColors.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: AppColors.border),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // CARTO Key Field
                     TextFormField(
                       controller: _cartoKeyController,
                       style: const TextStyle(color: Colors.white, fontSize: 14),

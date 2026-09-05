@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/app_colors.dart';
+import '../core/constants/app_config.dart';
 import '../core/utils/room_slug.dart';
 import '../models/location_point.dart';
 import '../models/peer_user.dart';
@@ -18,9 +19,9 @@ class TrackerProvider extends ChangeNotifier {
   late final MqttService mqttService;
   final LocationService locationService = LocationService();
 
-  // User Identity
-  String _myId = '';
-  String _myName = '';
+  // User Identity (initialized synchronously to prevent empty ID race condition)
+  String _myId = 'user-${Random().nextInt(999999).toString().padLeft(6, '0')}';
+  String _myName = 'Utente';
   Color _myColor = AppColors.userPalette.first;
 
   // Room State
@@ -28,6 +29,9 @@ class TrackerProvider extends ChangeNotifier {
   String _roomId = 'volantini-x';
   String _roomPassword = '';
   String _cartoKey = '';
+  String _brokerHost = AppConfig.mqttBrokerHost;
+  String _brokerUsername = AppConfig.defaultMqttUsername;
+  String _brokerPassword = AppConfig.defaultMqttPassword;
 
   // Tracking State
   bool _isTracking = true;
@@ -47,6 +51,11 @@ class TrackerProvider extends ChangeNotifier {
   String get roomId => _roomId;
   String get roomPassword => _roomPassword;
   String get cartoKey => _cartoKey;
+  String get brokerHost => _brokerHost;
+  String get brokerUsername => _brokerUsername;
+  String get brokerPassword => _brokerPassword;
+  String? get lastError => mqttService.lastError;
+  String? get activeBroker => mqttService.activeBroker;
   bool get isTracking => _isTracking;
   bool get isInRoom => _isInRoom;
   bool get isConnected => mqttService.isConnected;
@@ -56,19 +65,27 @@ class TrackerProvider extends ChangeNotifier {
       _peers.values.where((p) => p.isOnline).toList();
 
   TrackerProvider() {
+    _myName = 'Utente-${_myId.substring(5)}';
+    _myColor = AppColors.getColorForId(_myId);
     mqttService = MqttService(cryptoService: cryptoService);
     _initIdentity();
   }
 
   Future<void> _initIdentity() async {
     final prefs = await SharedPreferences.getInstance();
-    _myId = prefs.getString('tracker_my_id') ??
-        'user-${Random().nextInt(999999).toString().padLeft(6, '0')}';
-    await prefs.setString('tracker_my_id', _myId);
+    final savedId = prefs.getString('tracker_my_id');
+    if (savedId != null && savedId.trim().isNotEmpty) {
+      _myId = savedId.trim();
+    } else {
+      await prefs.setString('tracker_my_id', _myId);
+    }
 
     _myName = prefs.getString('tracker_my_name') ?? 'Utente-${_myId.substring(5)}';
     _myColor = AppColors.getColorForId(_myId);
     _cartoKey = prefs.getString('tracker_carto_key') ?? '';
+    _brokerHost = prefs.getString('tracker_mqtt_broker') ?? AppConfig.mqttBrokerHost;
+    _brokerUsername = prefs.getString('tracker_mqtt_username') ?? AppConfig.defaultMqttUsername;
+    _brokerPassword = prefs.getString('tracker_mqtt_password') ?? AppConfig.defaultMqttPassword;
     notifyListeners();
   }
 
@@ -78,6 +95,9 @@ class TrackerProvider extends ChangeNotifier {
     required String password,
     String? userName,
     String? cartoKey,
+    String? brokerHost,
+    String? brokerUsername,
+    String? brokerPassword,
   }) async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -95,12 +115,38 @@ class TrackerProvider extends ChangeNotifier {
       await prefs.setString('tracker_carto_key', _cartoKey);
     }
 
+    if (brokerHost != null && brokerHost.trim().isNotEmpty) {
+      _brokerHost = brokerHost.trim();
+      await prefs.setString('tracker_mqtt_broker', _brokerHost);
+    }
+
+    if (brokerUsername != null && brokerUsername.trim().isNotEmpty) {
+      _brokerUsername = brokerUsername.trim();
+      await prefs.setString('tracker_mqtt_username', _brokerUsername);
+    }
+
+    if (brokerPassword != null && brokerPassword.trim().isNotEmpty) {
+      _brokerPassword = brokerPassword.trim();
+      await prefs.setString('tracker_mqtt_password', _brokerPassword);
+    }
+
+    if (_myId.isEmpty) {
+      _myId = 'user-${Random().nextInt(999999).toString().padLeft(6, '0')}';
+    }
+
     // Derive E2EE Key
     await cryptoService.deriveKey(password: _roomPassword, roomId: _roomId);
 
     // Connect to MQTT Broker
-    final connected = await mqttService.connect(roomId: _roomId, myId: _myId);
+    final connected = await mqttService.connect(
+      roomId: _roomId,
+      myId: _myId,
+      brokerHost: _brokerHost,
+      username: _brokerUsername,
+      password: _brokerPassword,
+    );
     if (!connected) {
+      notifyListeners();
       return false;
     }
 
@@ -120,6 +166,9 @@ class TrackerProvider extends ChangeNotifier {
       myId: _myId,
       myName: _myName,
       myColorHex: '#${_myColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+      brokerHost: _brokerHost,
+      brokerUsername: _brokerUsername,
+      brokerPassword: _brokerPassword,
     );
 
     if (_isTracking) {

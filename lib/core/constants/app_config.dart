@@ -1,9 +1,23 @@
 /// Configuration parameters matching the web app
 class AppConfig {
-  // MQTT Network (Uses native TCP port 1883 or WSS port 8084)
-  static const String mqttBrokerHost = 'broker.emqx.io';
+  // MQTT Network (Private HiveMQ Cloud cluster in EU with TLS port 8883 and WSS port 8884)
+  static const String mqttBrokerHost =
+      '02c32905ccdb4e97b9cd3860b9ae6f14.s1.eu.hivemq.cloud';
+  static const String fallbackBrokerHost = 'broker.emqx.io';
+  static const int mqttTlsPort = 8883;
   static const int mqttTcpPort = 1883;
-  static const int mqttWssPort = 8084;
+  static const int mqttWssPort = 8884;
+  static const String mqttWssPath = '/mqtt';
+
+  // HiveMQ Cloud Dedicated Credentials
+  static const String defaultMqttUsername = 'tracker_user';
+  static const String defaultMqttPassword = r'=$GuL>X#N9G;Yum';
+
+  static const List<String> availableBrokers = [
+    '02c32905ccdb4e97b9cd3860b9ae6f14.s1.eu.hivemq.cloud',
+    'broker.emqx.io',
+    'broker.hivemq.com',
+  ];
   static const String topicPrefix = 'geotrack_minimal_v1';
 
   // Sampling & Battery Optimization
