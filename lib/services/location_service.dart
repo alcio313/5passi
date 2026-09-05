@@ -1,3 +1,4 @@
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
 import '../core/constants/app_config.dart';
 import '../core/utils/haversine.dart';
@@ -8,6 +9,47 @@ class LocationService {
   LocationPoint? _lastBroadcastPoint;
 
   LocationPoint? get lastBroadcastPoint => _lastBroadcastPoint;
+
+  /// Requests all necessary permissions on app startup (Notifications & Location)
+  Future<bool> requestStartupPermissions() async {
+    // 1. Notification Permission (Android 13+ / iOS)
+    try {
+      final notifPlugin = FlutterLocalNotificationsPlugin();
+      final androidNotif = notifPlugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await androidNotif?.requestNotificationsPermission();
+    } catch (_) {}
+
+    // 2. GPS Service Enabled check
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return false;
+      }
+
+      // 3. Location Permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          return false;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        return false;
+      }
+
+      // 4. Background permission for continuous screen-off tracking
+      if (permission == LocationPermission.whileInUse) {
+        await Geolocator.requestPermission();
+      }
+
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Verifies and requests location permissions
   Future<bool> checkAndRequestPermissions() async {

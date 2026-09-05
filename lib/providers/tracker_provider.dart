@@ -89,6 +89,11 @@ class TrackerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Explicitly requests location and notification permissions from the smartphone on startup
+  Future<bool> requestStartupPermissions() async {
+    return await locationService.requestStartupPermissions();
+  }
+
   /// Joins a room, derives encryption key and initializes background service
   Future<bool> joinRoom({
     required String groupName,
@@ -133,6 +138,9 @@ class TrackerProvider extends ChangeNotifier {
     if (_myId.isEmpty) {
       _myId = 'user-${Random().nextInt(999999).toString().padLeft(6, '0')}';
     }
+
+    // Ensure location permissions are granted
+    await locationService.checkAndRequestPermissions();
 
     // Derive E2EE Key
     await cryptoService.deriveKey(password: _roomPassword, roomId: _roomId);

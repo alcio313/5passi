@@ -34,6 +34,13 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
     _brokerController = TextEditingController(text: tracker.brokerHost);
     _brokerUserController = TextEditingController(text: tracker.brokerUsername);
     _brokerPasswordController = TextEditingController(text: tracker.brokerPassword);
+
+    // Request smartphone permissions immediately on app launch
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<TrackerProvider>().requestStartupPermissions();
+      }
+    });
   }
 
   late final TextEditingController _brokerUserController;
