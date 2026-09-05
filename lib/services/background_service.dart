@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:ui';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -16,38 +18,48 @@ class BackgroundTrackingManager {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  /// Background service is only needed and supported on mobile (Android/iOS)
+  static bool get isSupported =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
   /// Initializes the background service and notification channels
   static Future<void> initializeService() async {
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      AppConfig.notificationChannelId,
-      AppConfig.notificationChannelName,
-      description: 'Notifica persistente per il tracciamento continuo in background',
-      importance: Importance.low,
-      showBadge: false,
-    );
+    if (!isSupported) return;
 
-    await _notificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
+    try {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        AppConfig.notificationChannelId,
+        AppConfig.notificationChannelName,
+        description: 'Notifica persistente per il tracciamento continuo in background',
+        importance: Importance.low,
+        showBadge: false,
+      );
 
-    await _service.configure(
-      androidConfiguration: AndroidConfiguration(
-        onStart: onStartBackgroundService,
-        autoStart: false,
-        isForegroundMode: true,
-        notificationChannelId: AppConfig.notificationChannelId,
-        initialNotificationTitle: '5passi',
-        initialNotificationContent: 'Servizio di tracciamento pronto',
-        foregroundServiceNotificationId: AppConfig.notificationId,
-        foregroundServiceTypes: [AndroidForegroundType.location],
-      ),
-      iosConfiguration: IosConfiguration(
-        autoStart: false,
-        onForeground: onStartBackgroundService,
-        onBackground: onIosBackground,
-      ),
-    );
+      await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+
+      await _service.configure(
+        androidConfiguration: AndroidConfiguration(
+          onStart: onStartBackgroundService,
+          autoStart: false,
+          isForegroundMode: true,
+          notificationChannelId: AppConfig.notificationChannelId,
+          initialNotificationTitle: '5passi',
+          initialNotificationContent: 'Servizio di tracciamento pronto',
+          foregroundServiceNotificationId: AppConfig.notificationId,
+          foregroundServiceTypes: [AndroidForegroundType.location],
+        ),
+        iosConfiguration: IosConfiguration(
+          autoStart: false,
+          onForeground: onStartBackgroundService,
+          onBackground: onIosBackground,
+        ),
+      );
+    } catch (e) {
+      debugPrint('[BackgroundService] Failed to initialize: $e');
+    }
   }
 
   /// Sends updated room/credentials context into the running background service isolate
@@ -61,30 +73,39 @@ class BackgroundTrackingManager {
     String? brokerUsername,
     String? brokerPassword,
   }) {
-    _service.invoke('update_config', {
-      'roomId': roomId,
-      'password': password,
-      'myId': myId,
-      'myName': myName,
-      'myColorHex': myColorHex,
-      'brokerHost': brokerHost,
-      'brokerUsername': brokerUsername,
-      'brokerPassword': brokerPassword,
-    });
+    if (!isSupported) return;
+    try {
+      _service.invoke('update_config', {
+        'roomId': roomId,
+        'password': password,
+        'myId': myId,
+        'myName': myName,
+        'myColorHex': myColorHex,
+        'brokerHost': brokerHost,
+        'brokerUsername': brokerUsername,
+        'brokerPassword': brokerPassword,
+      });
+    } catch (_) {}
   }
 
   /// Starts the continuous background tracking service
   static Future<void> start() async {
-    final isRunning = await _service.isRunning();
-    if (!isRunning) {
-      await _service.startService();
-    }
-    _service.invoke('set_tracking', {'tracking': true});
+    if (!isSupported) return;
+    try {
+      final isRunning = await _service.isRunning();
+      if (!isRunning) {
+        await _service.startService();
+      }
+      _service.invoke('set_tracking', {'tracking': true});
+    } catch (_) {}
   }
 
   /// Stops or pauses the background tracking service
   static void stop() {
-    _service.invoke('set_tracking', {'tracking': false});
+    if (!isSupported) return;
+    try {
+      _service.invoke('set_tracking', {'tracking': false});
+    } catch (_) {}
   }
 }
 

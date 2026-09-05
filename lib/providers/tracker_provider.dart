@@ -42,6 +42,7 @@ class TrackerProvider extends ChangeNotifier {
 
   Timer? _peerCleanupTimer;
   Timer? _heartbeatTimer;
+  Timer? _desktopSamplingTimer;
 
   // Getters
   String get myId => _myId;
@@ -181,6 +182,7 @@ class TrackerProvider extends ChangeNotifier {
 
     if (_isTracking) {
       await BackgroundTrackingManager.start();
+      _startDesktopSamplingIfNeeded();
       await fetchCurrentFix();
     }
 
@@ -207,9 +209,11 @@ class TrackerProvider extends ChangeNotifier {
     if (_isTracking) {
       await FeedbackService.playStartFeedback();
       await BackgroundTrackingManager.start();
+      _startDesktopSamplingIfNeeded();
       await fetchCurrentFix();
     } else {
       await FeedbackService.playStopFeedback();
+      _desktopSamplingTimer?.cancel();
       BackgroundTrackingManager.stop();
     }
 
@@ -314,11 +318,26 @@ class TrackerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _startDesktopSamplingIfNeeded() {
+    _desktopSamplingTimer?.cancel();
+    if (!BackgroundTrackingManager.isSupported) {
+      _desktopSamplingTimer = Timer.periodic(
+        const Duration(milliseconds: AppConfig.samplingIntervalMs),
+        (_) {
+          if (_isTracking && _isInRoom) {
+            fetchCurrentFix();
+          }
+        },
+      );
+    }
+  }
+
   /// Leaves room and stops background service
   Future<void> leaveRoom() async {
     await mqttService.broadcast({'type': 'leave', 'id': _myId});
     _peerCleanupTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _desktopSamplingTimer?.cancel();
     BackgroundTrackingManager.stop();
     mqttService.disconnect();
     cryptoService.reset();
@@ -332,6 +351,7 @@ class TrackerProvider extends ChangeNotifier {
   void dispose() {
     _peerCleanupTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _desktopSamplingTimer?.cancel();
     mqttService.dispose();
     super.dispose();
   }
