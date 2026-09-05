@@ -7,7 +7,6 @@
 
 Applicazione mobile nativa cross-platform in **Flutter** (`5passi`) per il tracciamento GPS in tempo reale tra gruppi, progettata per risolvere il limite del tracciamento a schermo spento delle Web App / PWA.
 
-> 🤖 **Realizzato con Google Antigravity**: Questo progetto è stato interamente ideato, strutturato, sviluppato e ottimizzato con **Google Antigravity**, la piattaforma di sviluppo agentico avanzato di **Google DeepMind**.
 
 ---
 

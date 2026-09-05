@@ -76,7 +76,7 @@ class _TrackerMapScreenState extends State<TrackerMapScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
-                      color: AppColors.surface.withOpacity(0.94),
+                      color: AppColors.surface.withValues(alpha: 0.94),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(color: AppColors.border, width: 1.5),
                       boxShadow: const [
@@ -179,63 +179,29 @@ class _TrackerMapScreenState extends State<TrackerMapScreen> {
             ),
           ),
 
-          // 🎯 Recenter GPS Button
-          Positioned(
-            right: 16,
-            bottom: 120,
-            child: CompassRecenterButton(
-              onPressed: () => _recenterOnUser(userPos),
+          // 🎯 Recenter GPS Button (A metà schermo sul lato destro)
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: CompassRecenterButton(
+                onPressed: () => _recenterOnUser(userPos),
+              ),
             ),
           ),
 
-          // 🚀 Bottom Action Area: Tracking Button & Status Pill
-          Positioned(
-            left: 20,
-            right: 20,
-            bottom: 30,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Screen-off background indicator pill
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: tracker.isTracking ? AppColors.success : Colors.white30,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        tracker.isTracking ? Icons.battery_charging_full : Icons.pause_circle,
-                        color: tracker.isTracking ? AppColors.success : Colors.white70,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        tracker.isTracking
-                            ? 'Tracciamento a schermo spento: ATTIVO'
-                            : 'Tracciamento in pausa',
-                        style: TextStyle(
-                          color: tracker.isTracking ? AppColors.success : Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Large accessible action button
-                TrackingActionButton(
+          // 🚀 Bottom Action Area: Tracking Button (Spostato più in alto e protetto da SafeArea)
+          SafeArea(
+            bottom: true,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                child: TrackingActionButton(
                   isTracking: tracker.isTracking,
                   onPressed: () => tracker.toggleTracking(),
                 ),
-              ],
+              ),
             ),
           ),
         ],

@@ -27,7 +27,7 @@ class TrackingActionButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: buttonColor.withOpacity(0.5),
+            color: buttonColor.withValues(alpha: 0.5),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
