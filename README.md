@@ -3,6 +3,7 @@
 [![Built with Google Antigravity](https://img.shields.io/badge/Built%20with-Google%20Antigravity-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://deepmind.google)
 [![Build and Release](https://github.com/alcio313/5passi/actions/workflows/build_and_release.yml/badge.svg)](https://github.com/alcio313/5passi/actions/workflows/build_and_release.yml)
 [![Download APK](https://img.shields.io/badge/Download-APK%20Android-10B981?style=for-the-badge&logo=android&logoColor=white)](https://github.com/alcio313/5passi/releases)
+[![Download IPA](https://img.shields.io/badge/Download-IPA%20iOS-00E5FF?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/alcio313/5passi/releases)
 
 Applicazione mobile nativa cross-platform in **Flutter** (`5passi`) per il tracciamento GPS in tempo reale tra gruppi, progettata per risolvere il limite del tracciamento a schermo spento delle Web App / PWA.
 
@@ -10,13 +11,14 @@ Applicazione mobile nativa cross-platform in **Flutter** (`5passi`) per il tracc
 
 ---
 
-## 📥 Download Pacchetti Compilati (APK)
+## 📥 Download Pacchetti Compilati (Android & iOS)
 
-Grazie a **GitHub Actions**, ad ogni aggiornamento del codice o rilascio di tag viene automaticamente compilato e firmato il pacchetto per dispositivi Android:
+Grazie a **GitHub Actions**, ad ogni aggiornamento del codice o rilascio di tag vengono automaticamente compilati nel cloud i pacchetti per dispositivi Android e iPhone:
 
 * 📲 **[Scarica l'APK Diretto (Android)](https://github.com/alcio313/5passi/releases/download/latest/5passi-app-release.apk)** (installabile direttamente su qualsiasi smartphone/tablet Android senza passare dallo store).
+* 🍏 **[Scarica il pacchetto IPA (iPhone / iOS)](https://github.com/alcio313/5passi/releases/download/latest/5passi-ios-unsigned.ipa)** (installabile su iPhone/iPad tramite AltStore, Sideloadly, TrollStore o Xcode).
 * 📦 **[Scarica l'App Bundle (AAB)](https://github.com/alcio313/5passi/releases/download/latest/5passi-app-release.aab)** (pronto per la distribuzione su Google Play Console).
-* 🏷️ Tutti i rilasci storici sono disponibili nella sezione **[Releases](https://github.com/alcio313/5passi/releases)**.
+* 🏷️ Tutti i rilasci storici e gli archivi delle build sono disponibili nella sezione **[Releases](https://github.com/alcio313/5passi/releases)**.
 
 ---
 
