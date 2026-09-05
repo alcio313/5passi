@@ -37,7 +37,7 @@ class BackgroundTrackingManager {
         autoStart: false,
         isForegroundMode: true,
         notificationChannelId: AppConfig.notificationChannelId,
-        initialNotificationTitle: 'Live Map Tracker',
+        initialNotificationTitle: '5passi',
         initialNotificationContent: 'Servizio di tracciamento pronto',
         foregroundServiceNotificationId: AppConfig.notificationId,
         foregroundServiceTypes: [AndroidForegroundType.location],
@@ -151,12 +151,12 @@ void onStartBackgroundService(ServiceInstance service) async {
     if (service is AndroidServiceInstance) {
       if (isTracking) {
         service.setForegroundNotificationInfo(
-          title: 'Live Map Tracker 🛰️',
+          title: '5passi 🛰️',
           content: 'Tracciamento attivo a schermo spento',
         );
       } else {
         service.setForegroundNotificationInfo(
-          title: 'Live Map Tracker ⏸️',
+          title: '5passi ⏸️',
           content: 'Tracciamento in pausa',
         );
       }
@@ -230,7 +230,7 @@ void onStartBackgroundService(ServiceInstance service) async {
         // Update foreground persistent notification info
         if (service is AndroidServiceInstance) {
           service.setForegroundNotificationInfo(
-            title: 'Live Map Tracker • In Movimento',
+            title: '5passi • In Movimento',
             content:
                 '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)} (±${position.accuracy.toStringAsFixed(0)}m)',
           );

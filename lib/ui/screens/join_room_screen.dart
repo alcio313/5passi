@@ -140,11 +140,11 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                   const SizedBox(height: 16),
 
                   const Text(
-                    'Live Map Tracker',
+                    '5passi',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 28,
+                      fontSize: 32,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.5,
                     ),

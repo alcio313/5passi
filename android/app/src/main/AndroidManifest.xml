@@ -21,7 +21,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
-        android:label="Live Map Tracker"
+        android:label="5passi"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:usesCleartextTraffic="true">

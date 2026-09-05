@@ -36,6 +36,6 @@ class AppConfig {
 
   // Notification Channel for Android Foreground Service
   static const String notificationChannelId = 'live_map_tracker_channel';
-  static const String notificationChannelName = 'Tracciamento Live GPS';
+  static const String notificationChannelName = '5passi - Tracciamento Live GPS';
   static const int notificationId = 888;
 }
