@@ -1,23 +1,30 @@
-# 5passi - Live Map Tracker Mobile (Flutter) 🛰️📱
+# 5passi - Live Map Tracker (Mobile & Desktop) 🛰️📱💻
 
 [![Built with Google Antigravity](https://img.shields.io/badge/Built%20with-Google%20Antigravity-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://deepmind.google)
 [![Build and Release](https://github.com/alcio313/5passi/actions/workflows/build_and_release.yml/badge.svg)](https://github.com/alcio313/5passi/actions/workflows/build_and_release.yml)
 [![Download APK](https://img.shields.io/badge/Download-APK%20Android-10B981?style=for-the-badge&logo=android&logoColor=white)](https://github.com/alcio313/5passi/releases)
 [![Download IPA](https://img.shields.io/badge/Download-IPA%20iOS-00E5FF?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/alcio313/5passi/releases)
+[![Download Windows](https://img.shields.io/badge/Download-Windows%20EXE-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/alcio313/5passi/releases)
 
-Applicazione mobile nativa cross-platform in **Flutter** (`5passi`) per il tracciamento GPS in tempo reale tra gruppi, progettata per risolvere il limite del tracciamento a schermo spento delle Web App / PWA.
-
+Applicazione nativa cross-platform in **Flutter** (`5passi`) per il tracciamento GPS in tempo reale tra gruppi con crittografia end-to-end (E2EE), compilata automaticamente per **Android, iOS, Windows, macOS e Linux**.
 
 ---
 
-## 📥 Download Pacchetti Compilati (Android & iOS)
+## 📥 Download Pacchetti Compilati (Mobile & Desktop)
 
-Grazie a **GitHub Actions**, ad ogni aggiornamento del codice o rilascio di tag vengono automaticamente compilati nel cloud i pacchetti per dispositivi Android e iPhone:
+Grazie a **GitHub Actions**, ad ogni aggiornamento del codice o rilascio di tag vengono automaticamente compilati nel cloud i pacchetti pronti all'uso:
 
+### 📱 Smartphone & Tablet:
 * 📲 **[Scarica l'APK Diretto (Android)](https://github.com/alcio313/5passi/releases/download/latest/5passi-app-release.apk)** (installabile direttamente su qualsiasi smartphone/tablet Android senza passare dallo store).
 * 🍏 **[Scarica il pacchetto IPA (iPhone / iOS)](https://github.com/alcio313/5passi/releases/download/latest/5passi-ios-unsigned.ipa)** (installabile su iPhone/iPad tramite AltStore, Sideloadly, TrollStore o Xcode).
 * 📦 **[Scarica l'App Bundle (AAB)](https://github.com/alcio313/5passi/releases/download/latest/5passi-app-release.aab)** (pronto per la distribuzione su Google Play Console).
-* 🏷️ Tutti i rilasci storici e gli archivi delle build sono disponibili nella sezione **[Releases](https://github.com/alcio313/5passi/releases)**.
+
+### 🖥️ Computer Desktop & Laptop:
+* 🪟 **[Scarica per Windows (ZIP x64)](https://github.com/alcio313/5passi/releases/download/latest/5passi-windows-x64.zip)** (versione portable per Windows 10 e 11: estrai la cartella e fai doppio click su `5passi.exe`).
+* 🐧 **[Scarica per Linux (TAR.GZ x64)](https://github.com/alcio313/5passi/releases/download/latest/5passi-linux-x64.tar.gz)** (binario nativo GTK a 64 bit).
+* 🍎 **[Scarica per macOS (ZIP)](https://github.com/alcio313/5passi/releases/download/latest/5passi-macos.zip)** (applicazione macOS bundle `.app`).
+
+🏷️ Tutti i rilasci storici e gli archivi delle build sono sempre disponibili nella sezione **[Releases](https://github.com/alcio313/5passi/releases)**.
 
 ---
 

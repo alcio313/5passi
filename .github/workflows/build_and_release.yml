@@ -81,16 +81,23 @@ jobs:
             🚀 **Ultima versione compilata di 5passi** generata automaticamente da GitHub Actions.
             
             ### 📥 Download Pacchetti:
-            * [📲 **5passi-app-release.apk**](https://github.com/${{ github.repository }}/releases/download/latest/5passi-app-release.apk) (Installabile direttamente su qualsiasi dispositivo Android)
-            * [📦 **5passi-app-release.aab**](https://github.com/${{ github.repository }}/releases/download/latest/5passi-app-release.aab) (Android App Bundle per Google Play)
+
+            #### 📱 Mobile (Android & iOS):
+            * [📲 **5passi-app-release.apk**](https://github.com/${{ github.repository }}/releases/download/latest/5passi-app-release.apk) (Installabile direttamente su Android)
+            * [📦 **5passi-app-release.aab**](https://github.com/${{ github.repository }}/releases/download/latest/5passi-app-release.aab) (Bundle per Google Play Store)
             * [🍏 **5passi-ios-unsigned.ipa**](https://github.com/${{ github.repository }}/releases/download/latest/5passi-ios-unsigned.ipa) (Pacchetto per iPhone / iPad)
+            
+            #### 🖥️ Desktop (Windows, Linux, macOS):
+            * [🪟 **5passi-windows-x64.zip**](https://github.com/${{ github.repository }}/releases/download/latest/5passi-windows-x64.zip) (Windows 10/11 64-bit portable - estrai e avvia `5passi.exe`)
+            * [🐧 **5passi-linux-x64.tar.gz**](https://github.com/${{ github.repository }}/releases/download/latest/5passi-linux-x64.tar.gz) (Linux x64 nativo GTK)
+            * [🍎 **5passi-macos.zip**](https://github.com/${{ github.repository }}/releases/download/latest/5passi-macos.zip) (macOS `.app` bundle)
             
             *Realizzato con **Google Antigravity**.*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build-ios:
-    name: Build iOS Release (IPA & App)
+  build-apple:
+    name: Build Apple (iOS IPA & macOS App)
     runs-on: macos-latest
 
     steps:
@@ -117,32 +124,154 @@ jobs:
 
       - name: Package iOS IPA
         run: |
-          mkdir -p release_ios/Payload
-          cp -r build/ios/iphoneos/Runner.app release_ios/Payload/
-          cd release_ios
+          mkdir -p release_apple/Payload
+          cp -r build/ios/iphoneos/Runner.app release_apple/Payload/
+          cd release_apple
           zip -qr 5passi-ios-unsigned.ipa Payload
           cd ..
 
-      - name: Upload iOS Artifacts
+      - name: Build macOS Desktop Application
+        run: |
+          flutter config --enable-macos-desktop
+          flutter build macos --release
+          cd build/macos/Build/Products/Release
+          zip -qr ../../../../release_apple/5passi-macos.zip *.app
+          cd -
+
+      - name: Upload Apple Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: 5passi-ios-binaries
-          path: release_ios/5passi-ios-unsigned.ipa
+          name: 5passi-apple-binaries
+          path: |
+            release_apple/5passi-ios-unsigned.ipa
+            release_apple/5passi-macos.zip
           retention-days: 30
 
-      - name: Attach iOS to Rolling Latest Release (on Main)
+      - name: Attach Apple Binaries to Rolling Latest Release (on Main)
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          files: release_ios/5passi-ios-unsigned.ipa
+          files: |
+            release_apple/5passi-ios-unsigned.ipa
+            release_apple/5passi-macos.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Attach iOS to GitHub Release (on Tag)
+      - name: Attach Apple Binaries to GitHub Release (on Tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: release_ios/5passi-ios-unsigned.ipa
+          files: |
+            release_apple/5passi-ios-unsigned.ipa
+            release_apple/5passi-macos.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    name: Build Windows Desktop (x64 ZIP)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Windows Application
+        run: flutter build windows --release
+
+      - name: Package Windows ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "5passi-windows-x64.zip"
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: 5passi-windows-binaries
+          path: 5passi-windows-x64.zip
+          retention-days: 30
+
+      - name: Attach Windows to Rolling Latest Release (on Main)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: 5passi-windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach Windows to GitHub Release (on Tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: 5passi-windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux:
+    name: Build Linux Desktop (x64 TAR.GZ)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Enable Linux Desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Linux Application
+        run: flutter build linux --release
+
+      - name: Package Linux Archive
+        run: |
+          tar -czf 5passi-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: 5passi-linux-binaries
+          path: 5passi-linux-x64.tar.gz
+          retention-days: 30
+
+      - name: Attach Linux to Rolling Latest Release (on Main)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: 5passi-linux-x64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach Linux to GitHub Release (on Tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: 5passi-linux-x64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
