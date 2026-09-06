@@ -308,6 +308,7 @@ void onStartBackgroundService(ServiceInstance service) async {
           'color': myColorHex ?? '#0066FF',
           'lat': position.latitude,
           'lng': position.longitude,
+          'coord': [position.latitude, position.longitude],
           'speed': position.speed,
           'heading': position.heading,
           'accuracy': position.accuracy,

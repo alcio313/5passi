@@ -53,15 +53,17 @@ class TrackerMapView extends StatelessWidget {
       );
     }
 
-    // Remote peer trails
+    // Remote peer trails (both active participants and historical paths)
     for (final peer in peers) {
       final peerPoints = peer.trail.map((p) => p.toLatLng()).toList();
       if (peerPoints.length >= 2) {
+        final double opacity = peer.isOnline ? 0.85 : 0.60;
+        final double strokeWidth = peer.isOnline ? 5.5 : 4.5;
         polylines.add(
           Polyline(
             points: peerPoints,
-            strokeWidth: 5.0,
-            color: peer.color.withValues(alpha: 0.8),
+            strokeWidth: strokeWidth,
+            color: peer.color.withValues(alpha: opacity),
           ),
         );
       }
@@ -87,9 +89,9 @@ class TrackerMapView extends StatelessWidget {
       );
     }
 
-    // Peer Radar Markers
+    // Peer Radar Markers (only rendered for active/online participants)
     for (final peer in peers) {
-      if (peer.currentLatLng != null) {
+      if (peer.isOnline && peer.currentLatLng != null) {
         markers.add(
           Marker(
             point: peer.currentLatLng!,

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_map_tracker/core/utils/haversine.dart';
 import 'package:live_map_tracker/models/location_point.dart';
+import 'package:live_map_tracker/models/peer_user.dart';
 import 'package:live_map_tracker/services/location_service.dart';
 
 void main() {
@@ -81,6 +82,60 @@ void main() {
 
       trail.add(LocationPoint(lat: 41.9030, lng: 12.4966, timestamp: 2000));
       expect(trail.length >= 2, isTrue);
+    });
+
+    test('LocationPoint correctly parses web coordinate formats', () {
+      // 1. Web list format: [lat, lng]
+      final fromList = LocationPoint.fromJson([41.9028, 12.4964]);
+      expect(fromList.lat, equals(41.9028));
+      expect(fromList.lng, equals(12.4964));
+
+      // 2. Web object with coord: {coord: [lat, lng]}
+      final fromCoordObj = LocationPoint.fromJson({
+        'coord': [41.9028, 12.4964],
+        'time': 1700000000000,
+      });
+      expect(fromCoordObj.lat, equals(41.9028));
+      expect(fromCoordObj.lng, equals(12.4964));
+      expect(fromCoordObj.timestamp, equals(1700000000000));
+    });
+
+    test('PeerUser correctly preserves trail and reflects hasLeft/isOnline state', () {
+      final peer = PeerUser(
+        id: 'user-past',
+        name: 'Marco',
+        lastSeen: DateTime.now().millisecondsSinceEpoch,
+        trail: [
+          LocationPoint(lat: 41.900, lng: 12.400, timestamp: 1000),
+          LocationPoint(lat: 41.905, lng: 12.405, timestamp: 2000),
+        ],
+      );
+
+      expect(peer.isOnline, isTrue);
+      expect(peer.hasLeft, isFalse);
+      expect(peer.trail.length, equals(2));
+
+      // User leaves the room
+      peer.hasLeft = true;
+      peer.isTracking = false;
+      peer.currentPosition = null;
+
+      // Online status should be false, but trail must remain fully intact
+      expect(peer.isOnline, isFalse);
+      expect(peer.hasLeft, isTrue);
+      expect(peer.trail.length, equals(2));
+
+      // Serialization round-trip preserves all trail data
+      final json = peer.toJson();
+      final restored = PeerUser.fromJson(json);
+
+      expect(restored.id, equals('user-past'));
+      expect(restored.name, equals('Marco'));
+      expect(restored.hasLeft, isTrue);
+      expect(restored.isOnline, isFalse);
+      expect(restored.trail.length, equals(2));
+      expect(restored.trail.first.lat, equals(41.900));
+      expect(restored.trail.last.lat, equals(41.905));
     });
   });
 }

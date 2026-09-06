@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -45,6 +46,7 @@ class TrackerProvider extends ChangeNotifier {
   Timer? _peerCleanupTimer;
   Timer? _heartbeatTimer;
   Timer? _desktopSamplingTimer;
+  Timer? _saveDebounceTimer;
   StreamSubscription<Position>? _positionSubscription;
   StreamSubscription<Map<String, dynamic>?>? _bgLocationSubscription;
 
@@ -66,8 +68,11 @@ class TrackerProvider extends ChangeNotifier {
   bool get isConnected => mqttService.isConnected;
   LocationPoint? get currentLocation => _currentLocation;
   List<LocationPoint> get myTrail => List.unmodifiable(_myTrail);
+  List<PeerUser> get allPeers => _peers.values.toList();
   List<PeerUser> get onlinePeers =>
-      _peers.values.where((p) => p.isOnline).toList();
+      _peers.values.where((p) => p.isOnline && !p.hasLeft).toList();
+  List<PeerUser> get offlinePeers =>
+      _peers.values.where((p) => !p.isOnline || p.hasLeft).toList();
 
   TrackerProvider() {
     _myName = 'Utente-${_myId.substring(5)}';
@@ -166,11 +171,11 @@ class TrackerProvider extends ChangeNotifier {
     _isInRoom = true;
     _peers.clear();
 
+    // Load any saved historical trails for this room
+    await _loadRoomHistory();
+
     // Listen to incoming decrypted peer events
     mqttService.incomingMessages.listen(_handleIncomingMessage);
-
-    // Notify room of our presence
-    await _broadcastJoin();
 
     // Configure and start background service
     await BackgroundTrackingManager.updateServiceConfig(
@@ -190,7 +195,7 @@ class TrackerProvider extends ChangeNotifier {
       await fetchCurrentFix();
     }
 
-    // Notify room of our presence
+    // Notify room of our presence (with current trail)
     await _broadcastJoin();
 
     // Start background timers
@@ -295,6 +300,8 @@ class TrackerProvider extends ChangeNotifier {
       content:
           '${point.lat.toStringAsFixed(4)}, ${point.lng.toStringAsFixed(4)}$accuracyStr',
     );
+
+    _saveRoomHistoryDebounced();
   }
 
   Future<void> _broadcastPosition(LocationPoint point) async {
@@ -305,6 +312,7 @@ class TrackerProvider extends ChangeNotifier {
       'color': '#${_myColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
       'lat': point.lat,
       'lng': point.lng,
+      'coord': [point.lat, point.lng],
       'speed': point.speed,
       'heading': point.heading,
       'accuracy': point.accuracy,
@@ -377,41 +385,196 @@ class TrackerProvider extends ChangeNotifier {
       ),
     );
 
-    peer.lastSeen = now;
-    if (data['name'] != null) peer.name = data['name'] as String;
+    if (data['name'] != null && (data['name'] as String).isNotEmpty) {
+      peer.name = data['name'] as String;
+    }
 
     switch (type) {
       case 'join':
+        peer.hasLeft = false;
+        peer.lastSeen = now;
         if (data['tracking'] != null) peer.isTracking = data['tracking'] == true;
         if (data['trail'] is List) {
           final list = data['trail'] as List;
-          peer.trail = list.map((e) => LocationPoint.fromJson(e)).toList();
-          if (peer.trail.isNotEmpty) {
-            peer.currentPosition = peer.trail.last;
-          }
+          final incoming = list.map((e) => LocationPoint.fromJson(e)).toList();
+          _mergePeerTrail(peer, incoming);
         }
+        // Share our own trail and all historical room trails with the newcomer
+        _shareRoomHistoryWithJoiner();
+        _saveRoomHistoryDebounced();
+        break;
+
+      case 'sync':
+        if (data['tracking'] != null) peer.isTracking = data['tracking'] == true;
+        if (data['hasLeft'] != null) peer.hasLeft = data['hasLeft'] == true;
+        if (data['isOnline'] == false) {
+          peer.lastSeen = 0;
+        } else {
+          peer.lastSeen = now;
+        }
+        if (data['trail'] is List) {
+          final list = data['trail'] as List;
+          final incoming = list.map((e) => LocationPoint.fromJson(e)).toList();
+          _mergePeerTrail(peer, incoming);
+        }
+        _saveRoomHistoryDebounced();
         break;
 
       case 'pos':
+        peer.hasLeft = false;
+        peer.lastSeen = now;
         final point = LocationPoint.fromJson(data);
         peer.currentPosition = point;
         peer.trail.add(point);
         peer.isTracking = true;
+        _saveRoomHistoryDebounced();
         break;
 
       case 'status':
+        peer.lastSeen = now;
         if (data['tracking'] != null) peer.isTracking = data['tracking'] == true;
         break;
 
       case 'leave':
-        _peers.remove(peerId);
+        // Preserve peer's completed trail in memory! Hide active radar marker only.
+        peer.isTracking = false;
+        peer.hasLeft = true;
+        peer.currentPosition = null;
+        _saveRoomHistory();
         break;
 
       case 'ping':
+        peer.lastSeen = now;
+        peer.hasLeft = false;
         break;
     }
 
     notifyListeners();
+  }
+
+  /// Sends both own trail and all known peers' trails to catch up a new participant
+  Future<void> _shareRoomHistoryWithJoiner() async {
+    // Add small randomized delay (150-450ms) to avoid simultaneous network collisions
+    await Future.delayed(Duration(milliseconds: 150 + Random().nextInt(300)));
+    if (!_isInRoom || !isConnected) return;
+
+    // 1. Share own trail if non-empty
+    if (_myTrail.isNotEmpty) {
+      await mqttService.broadcast({
+        'type': 'sync',
+        'id': _myId,
+        'name': _myName,
+        'color': '#${_myColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+        'trail': _myTrail.map((p) => p.toJson()).toList(),
+        'tracking': _isTracking,
+        'isOnline': true,
+        'hasLeft': false,
+      });
+    }
+
+    // 2. Share past trails of all known peers (active, offline, or exited)
+    for (final pastPeer in _peers.values) {
+      if (pastPeer.id != _myId && pastPeer.trail.isNotEmpty) {
+        await mqttService.broadcast({
+          'type': 'sync',
+          'id': pastPeer.id,
+          'name': pastPeer.name,
+          'color': pastPeer.colorHex,
+          'trail': pastPeer.trail.map((p) => p.toJson()).toList(),
+          'tracking': pastPeer.isTracking,
+          'isOnline': pastPeer.isOnline,
+          'hasLeft': pastPeer.hasLeft,
+        });
+      }
+    }
+  }
+
+  /// Merges incoming points into a peer's trail, deduplicating by timestamp
+  void _mergePeerTrail(PeerUser peer, List<LocationPoint> incoming) {
+    if (incoming.isEmpty) return;
+    if (peer.trail.isEmpty) {
+      peer.trail.addAll(incoming);
+    } else {
+      final existingTimes = peer.trail.map((p) => p.timestamp).toSet();
+      for (final p in incoming) {
+        if (!existingTimes.contains(p.timestamp)) {
+          peer.trail.add(p);
+          existingTimes.add(p.timestamp);
+        }
+      }
+      peer.trail.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    }
+    if (peer.trail.isNotEmpty && !peer.hasLeft) {
+      peer.currentPosition = peer.trail.last;
+    }
+  }
+
+  void _saveRoomHistoryDebounced() {
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = Timer(const Duration(seconds: 4), () {
+      _saveRoomHistory();
+    });
+  }
+
+  /// Loads locally stored room trails from previous sessions
+  Future<void> _loadRoomHistory() async {
+    if (_roomId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString('room_history_$_roomId');
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final Map<String, dynamic> data = jsonDecode(jsonStr);
+        if (data['myTrail'] is List) {
+          final list = data['myTrail'] as List;
+          final loadedTrail = list.map((e) => LocationPoint.fromJson(e)).toList();
+          final existingTimes = _myTrail.map((p) => p.timestamp).toSet();
+          for (final p in loadedTrail) {
+            if (!existingTimes.contains(p.timestamp)) {
+              _myTrail.add(p);
+              existingTimes.add(p.timestamp);
+            }
+          }
+          _myTrail.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          if (_myTrail.isNotEmpty && _currentLocation == null) {
+            _currentLocation = _myTrail.last;
+          }
+        }
+        if (data['peers'] is List) {
+          final pList = data['peers'] as List;
+          for (final pJson in pList) {
+            if (pJson is Map<String, dynamic>) {
+              final peer = PeerUser.fromJson(pJson);
+              if (peer.id.isNotEmpty && peer.id != _myId) {
+                final existing = _peers[peer.id];
+                if (existing == null) {
+                  _peers[peer.id] = peer;
+                } else {
+                  _mergePeerTrail(existing, peer.trail);
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [TrackerProvider] Error loading room history: $e');
+    }
+  }
+
+  /// Saves complete room trail history into local device storage
+  Future<void> _saveRoomHistory() async {
+    if (_roomId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyData = {
+        'myTrail': _myTrail.map((p) => p.toJson()).toList(),
+        'peers': _peers.values.map((p) => p.toJson()).toList(),
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      };
+      await prefs.setString('room_history_$_roomId', jsonEncode(historyData));
+    } catch (e) {
+      debugPrint('⚠️ [TrackerProvider] Error saving room history: $e');
+    }
   }
 
   void _startDesktopSamplingIfNeeded() {
@@ -431,6 +594,8 @@ class TrackerProvider extends ChangeNotifier {
   /// Leaves room and stops background service
   Future<void> leaveRoom() async {
     await mqttService.broadcast({'type': 'leave', 'id': _myId});
+    await _saveRoomHistory();
+    _saveDebounceTimer?.cancel();
     _peerCleanupTimer?.cancel();
     _heartbeatTimer?.cancel();
     _stopLiveTracking();
@@ -446,6 +611,7 @@ class TrackerProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _saveDebounceTimer?.cancel();
     _peerCleanupTimer?.cancel();
     _heartbeatTimer?.cancel();
     _stopLiveTracking();

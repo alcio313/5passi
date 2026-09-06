@@ -165,10 +165,10 @@ class ParticipantsSheet extends StatelessWidget {
               ),
             ),
 
-            // Remote Peer List
+            // Remote Peer List (Online)
             if (peers.isNotEmpty) ...[
               ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 220),
+                constraints: const BoxConstraints(maxHeight: 180),
                 child: ListView.builder(
                   shrinkWrap: true,
                   itemCount: peers.length,
@@ -193,6 +193,50 @@ class ParticipantsSheet extends StatelessWidget {
                           color: peer.isTracking ? AppColors.success : Colors.white60,
                           fontSize: 12,
                         ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+
+            // Historical Saved Trails (Offline or exited participants)
+            if (tracker.allPeers.any((p) => !p.isOnline || p.hasLeft)) ...[
+              const Divider(color: AppColors.border, height: 20),
+              Text(
+                'Tracciati Storici in Memoria (${tracker.allPeers.where((p) => !p.isOnline || p.hasLeft).length})',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 150),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: tracker.allPeers.where((p) => !p.isOnline || p.hasLeft).length,
+                  itemBuilder: (context, index) {
+                    final pastPeer = tracker.allPeers.where((p) => !p.isOnline || p.hasLeft).toList()[index];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        backgroundColor: pastPeer.color.withValues(alpha: 0.6),
+                        child: Text(
+                          pastPeer.name.isNotEmpty ? pastPeer.name[0].toUpperCase() : '?',
+                          style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      title: Text(
+                        pastPeer.name,
+                        style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        pastPeer.hasLeft
+                            ? '🚪 Uscito dalla stanza • ${pastPeer.trail.length} punti'
+                            : '💤 Non in linea • ${pastPeer.trail.length} punti',
+                        style: const TextStyle(color: Colors.white38, fontSize: 12),
                       ),
                     );
                   },

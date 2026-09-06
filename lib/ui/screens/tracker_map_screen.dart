@@ -75,7 +75,7 @@ class _TrackerMapScreenState extends State<TrackerMapScreen> {
             userColor: tracker.myColor,
             userName: tracker.myName,
             isTracking: tracker.isTracking,
-            peers: tracker.onlinePeers,
+            peers: tracker.allPeers,
             cartoApiKey: tracker.cartoKey,
           ),
 
