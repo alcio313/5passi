@@ -1,18 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:mqtt_client/mqtt_client.dart';
-import 'package:mqtt_client/mqtt_server_client.dart';
 import '../core/constants/app_config.dart';
 import '../models/encrypted_packet.dart';
 import 'crypto_service.dart';
+import 'mqtt/mqtt_client_factory.dart';
 
 /// Candidate server endpoint configuration for connection attempts
 class _MqttCandidate {
   final String host;
   final int port;
   final bool secure;
+  final String path;
   final String? username;
   final String? password;
 
@@ -20,19 +20,20 @@ class _MqttCandidate {
     required this.host,
     required this.port,
     required this.secure,
+    this.path = '/mqtt',
     this.username,
     this.password,
   });
 
   @override
   String toString() =>
-      '$host:$port (TLS: $secure, Auth: ${username != null && username!.isNotEmpty})';
+      '$host:$port (TLS/WSS: $secure, Path: $path, Auth: ${username != null && username!.isNotEmpty})';
 }
 
-/// Manages real-time MQTT connectivity with TLS encryption and automatic fallbacks.
+/// Manages real-time MQTT connectivity with TLS/WSS encryption and automatic fallbacks.
 class MqttService {
   final CryptoService cryptoService;
-  MqttServerClient? _client;
+  MqttClient? _client;
   StreamSubscription? _updatesSubscription;
 
   String? _roomId;
@@ -99,57 +100,143 @@ class MqttService {
     // Prepare prioritized candidate list
     final List<_MqttCandidate> candidates = [];
 
-    if (brokerHost != null && brokerHost.trim().isNotEmpty) {
-      final customHost = brokerHost.trim();
-      final isHiveMqCloud = customHost.contains('hivemq.cloud');
-      if (port != null) {
-        final tls = useTls ?? (port == AppConfig.mqttTlsPort);
-        candidates.add(_MqttCandidate(
-          host: customHost,
-          port: port,
-          secure: tls,
-          username: username ?? (isHiveMqCloud ? effectiveUser : null),
-          password: password ?? (isHiveMqCloud ? effectivePass : null),
-        ));
-      } else {
-        candidates.add(_MqttCandidate(
-          host: customHost,
-          port: AppConfig.mqttTlsPort,
-          secure: true,
-          username: username ?? (isHiveMqCloud ? effectiveUser : null),
-          password: password ?? (isHiveMqCloud ? effectivePass : null),
-        ));
-        if (!isHiveMqCloud) {
+    if (kIsWeb) {
+      // In web browsers (Chrome, Edge, Firefox, Safari), MQTT must connect via WebSockets (WSS/WS)
+      if (brokerHost != null && brokerHost.trim().isNotEmpty) {
+        final customHost = brokerHost.trim();
+        final isHiveMqCloud = customHost.contains('hivemq.cloud');
+        final isEmqx = customHost.contains('emqx.io');
+        final defaultWssPort = isEmqx ? 8084 : AppConfig.mqttWssPort;
+
+        if (port != null) {
+          // If port was passed as native 8883, map to WSS port (8884/8084) in browser
+          final effectivePort =
+              (port == AppConfig.mqttTlsPort) ? defaultWssPort : port;
+          final tls = useTls ??
+              (effectivePort == defaultWssPort ||
+                  effectivePort == 8884 ||
+                  effectivePort == 8084 ||
+                  effectivePort == 443);
           candidates.add(_MqttCandidate(
             host: customHost,
-            port: AppConfig.mqttTcpPort,
-            secure: false,
-            username: username,
-            password: password,
+            port: effectivePort,
+            secure: tls,
+            path: AppConfig.mqttWssPath,
+            username: username ?? (isHiveMqCloud ? effectiveUser : null),
+            password: password ?? (isHiveMqCloud ? effectivePass : null),
           ));
+        } else {
+          candidates.add(_MqttCandidate(
+            host: customHost,
+            port: defaultWssPort,
+            secure: true,
+            path: AppConfig.mqttWssPath,
+            username: username ?? (isHiveMqCloud ? effectiveUser : null),
+            password: password ?? (isHiveMqCloud ? effectivePass : null),
+          ));
+          if (!isHiveMqCloud) {
+            candidates.add(_MqttCandidate(
+              host: customHost,
+              port: isEmqx ? 8083 : 8000,
+              secure: false,
+              path: AppConfig.mqttWssPath,
+              username: username,
+              password: password,
+            ));
+          }
         }
+      } else {
+        // 1. Primary: Dedicated HiveMQ Cloud in EU with WSS (8884) & Auth
+        candidates.add(_MqttCandidate(
+          host: AppConfig.mqttBrokerHost,
+          port: AppConfig.mqttWssPort,
+          secure: true,
+          path: AppConfig.mqttWssPath,
+          username: effectiveUser,
+          password: effectivePass,
+        ));
+        // 2. Fallback: Public EMQX WSS (8084)
+        candidates.add(const _MqttCandidate(
+          host: AppConfig.fallbackBrokerHost,
+          port: 8084,
+          secure: true,
+          path: AppConfig.mqttWssPath,
+        ));
+        // 3. Fallback: Public EMQX WS (8083)
+        candidates.add(const _MqttCandidate(
+          host: AppConfig.fallbackBrokerHost,
+          port: 8083,
+          secure: false,
+          path: AppConfig.mqttWssPath,
+        ));
+        // 4. Fallback: Public HiveMQ WSS (8884)
+        candidates.add(const _MqttCandidate(
+          host: 'broker.hivemq.com',
+          port: 8884,
+          secure: true,
+          path: AppConfig.mqttWssPath,
+        ));
       }
     } else {
-      // 1. Primary: Dedicated HiveMQ Cloud in EU with TLS (8883) & Auth
-      candidates.add(_MqttCandidate(
-        host: AppConfig.mqttBrokerHost,
-        port: AppConfig.mqttTlsPort,
-        secure: true,
-        username: effectiveUser,
-        password: effectivePass,
-      ));
-      // 2. Fallback: Public EMQX TLS (8883)
-      candidates.add(const _MqttCandidate(
-        host: AppConfig.fallbackBrokerHost,
-        port: AppConfig.mqttTlsPort,
-        secure: true,
-      ));
-      // 3. Fallback: Public EMQX TCP (1883)
-      candidates.add(const _MqttCandidate(
-        host: AppConfig.fallbackBrokerHost,
-        port: AppConfig.mqttTcpPort,
-        secure: false,
-      ));
+      // Native platforms (Android, iOS, Windows, macOS, Linux) with TCP / TLS sockets
+      if (brokerHost != null && brokerHost.trim().isNotEmpty) {
+        final customHost = brokerHost.trim();
+        final isHiveMqCloud = customHost.contains('hivemq.cloud');
+        if (port != null) {
+          final tls = useTls ?? (port == AppConfig.mqttTlsPort);
+          candidates.add(_MqttCandidate(
+            host: customHost,
+            port: port,
+            secure: tls,
+            username: username ?? (isHiveMqCloud ? effectiveUser : null),
+            password: password ?? (isHiveMqCloud ? effectivePass : null),
+          ));
+        } else {
+          candidates.add(_MqttCandidate(
+            host: customHost,
+            port: AppConfig.mqttTlsPort,
+            secure: true,
+            username: username ?? (isHiveMqCloud ? effectiveUser : null),
+            password: password ?? (isHiveMqCloud ? effectivePass : null),
+          ));
+          if (!isHiveMqCloud) {
+            candidates.add(_MqttCandidate(
+              host: customHost,
+              port: AppConfig.mqttTcpPort,
+              secure: false,
+              username: username,
+              password: password,
+            ));
+          }
+        }
+      } else {
+        // 1. Primary: Dedicated HiveMQ Cloud in EU with TLS (8883) & Auth
+        candidates.add(_MqttCandidate(
+          host: AppConfig.mqttBrokerHost,
+          port: AppConfig.mqttTlsPort,
+          secure: true,
+          username: effectiveUser,
+          password: effectivePass,
+        ));
+        // 2. Fallback: Public EMQX TLS (8883)
+        candidates.add(const _MqttCandidate(
+          host: AppConfig.fallbackBrokerHost,
+          port: AppConfig.mqttTlsPort,
+          secure: true,
+        ));
+        // 3. Fallback: Public EMQX TCP (1883)
+        candidates.add(const _MqttCandidate(
+          host: AppConfig.fallbackBrokerHost,
+          port: AppConfig.mqttTcpPort,
+          secure: false,
+        ));
+        // 4. Fallback: Public HiveMQ TCP (1883)
+        candidates.add(const _MqttCandidate(
+          host: 'broker.hivemq.com',
+          port: AppConfig.mqttTcpPort,
+          secure: false,
+        ));
+      }
     }
 
     String accumulatedErrors = '';
@@ -163,7 +250,8 @@ class MqttService {
         return true;
       } else {
         debugPrint('⚠️ [MQTT] Fallito $candidate: $_lastError');
-        accumulatedErrors += '${candidate.host}:${candidate.port} ($_lastError); ';
+        accumulatedErrors +=
+            '${candidate.host}:${candidate.port} ($_lastError); ';
       }
     }
 
@@ -172,22 +260,22 @@ class MqttService {
   }
 
   Future<bool> _tryConnectCandidate(_MqttCandidate candidate) async {
-    MqttServerClient? testClient;
+    MqttClient? testClient;
     final effectiveClientId = _clientId ?? _myId!;
     try {
-      testClient =
-          MqttServerClient.withPort(candidate.host, effectiveClientId, candidate.port);
+      testClient = MqttClientFactory.createClient(
+        host: candidate.host,
+        clientId: effectiveClientId,
+        port: candidate.port,
+        secure: candidate.secure,
+        path: candidate.path,
+      );
       testClient.logging(on: false);
       testClient.keepAlivePeriod = 20;
       testClient.autoReconnect = true;
       testClient.onDisconnected = _onDisconnected;
       testClient.onConnected = _onConnected;
       testClient.onAutoReconnected = _onAutoReconnected;
-
-      if (candidate.secure) {
-        testClient.secure = true;
-        testClient.securityContext = SecurityContext.defaultContext;
-      }
 
       final connMessage = MqttConnectMessage()
           .withClientIdentifier(effectiveClientId)
