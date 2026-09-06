@@ -39,6 +39,7 @@ class TrackerProvider extends ChangeNotifier with WidgetsBindingObserver {
   // Tracking State
   bool _isTracking = true;
   bool _isInRoom = false;
+  bool _pendingGap = false;
   LocationPoint? _currentLocation;
   final List<LocationPoint> _myTrail = [];
   final Map<String, PeerUser> _peers = {};
@@ -289,14 +290,30 @@ class TrackerProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Appends a new position to myTrail, updates currentLocation, and broadcasts to room
-  void _handleNewUserPosition(LocationPoint point) {
+  void _handleNewUserPosition(LocationPoint rawPoint) {
+    if (!_isTracking || !_isInRoom) return;
+
+    // Determine if this point should start a new segment (gap) after a pause
+    final bool shouldBeGap = rawPoint.isGap || _pendingGap;
+    final point = shouldBeGap
+        ? LocationPoint(
+            lat: rawPoint.lat,
+            lng: rawPoint.lng,
+            heading: rawPoint.heading,
+            speed: rawPoint.speed,
+            accuracy: rawPoint.accuracy,
+            timestamp: rawPoint.timestamp,
+            isGap: true,
+          )
+        : rawPoint;
+
     // Noise filter: ignore very inaccurate GPS fixes (>80m) if we already have a fix
     if (point.accuracy != null && point.accuracy! > 80.0 && _currentLocation != null) {
       return;
     }
 
-    // Distance filter: ignore jitter (<3.5m)
-    if (_myTrail.isNotEmpty) {
+    // Distance filter: ignore jitter (<3.5m), UNLESS this point starts a new gap segment
+    if (!point.isGap && _myTrail.isNotEmpty) {
       final last = _myTrail.last;
       final distance = Haversine.distanceInMeters(
         last.lat,
@@ -308,6 +325,9 @@ class TrackerProvider extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
     }
+
+    // Point accepted: reset pending gap flag
+    _pendingGap = false;
 
     _currentLocation = point;
     _myTrail.add(point);
@@ -335,11 +355,12 @@ class TrackerProvider extends ChangeNotifier with WidgetsBindingObserver {
       'color': '#${_myColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
       'lat': point.lat,
       'lng': point.lng,
-      'coord': [point.lat, point.lng],
+      'coord': [point.lat, point.lng, point.isGap ? 1 : 0],
       'speed': point.speed,
       'heading': point.heading,
       'accuracy': point.accuracy,
       'time': point.timestamp,
+      'isGap': point.isGap,
     });
   }
 
@@ -349,11 +370,16 @@ class TrackerProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
 
     if (_isTracking) {
+      // If we already have recorded points, the next position starts a new segment
+      if (_myTrail.isNotEmpty) {
+        _pendingGap = true;
+      }
       await FeedbackService.playStartFeedback();
       await BackgroundTrackingManager.start();
       _startLiveTracking();
       await fetchCurrentFix();
     } else {
+      _pendingGap = true;
       await FeedbackService.playStopFeedback();
       _stopLiveTracking();
       BackgroundTrackingManager.stop();

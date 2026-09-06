@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/constants/app_config.dart';
+import '../../models/location_point.dart';
 import '../../models/peer_user.dart';
 import 'radar_marker_widget.dart';
 
@@ -9,7 +10,7 @@ import 'radar_marker_widget.dart';
 class TrackerMapView extends StatelessWidget {
   final MapController mapController;
   final LatLng? userPosition;
-  final List<LatLng> userTrail;
+  final List<LocationPoint> userTrail;
   final Color userColor;
   final String userName;
   final bool isTracking;
@@ -35,6 +36,28 @@ class TrackerMapView extends StatelessWidget {
     return AppConfig.defaultCartoTileUrl;
   }
 
+  /// Splits a sequence of recorded points into independent polyline segments at each gap/pause
+  List<List<LatLng>> _splitIntoSegments(List<LocationPoint> points) {
+    if (points.isEmpty) return const [];
+    final List<List<LatLng>> segments = [];
+    List<LatLng> currentSegment = [];
+
+    for (final p in points) {
+      if (p.isGap && currentSegment.isNotEmpty) {
+        if (currentSegment.length >= 2) {
+          segments.add(currentSegment);
+        }
+        currentSegment = [p.toLatLng()];
+      } else {
+        currentSegment.add(p.toLatLng());
+      }
+    }
+    if (currentSegment.length >= 2) {
+      segments.add(currentSegment);
+    }
+    return segments;
+  }
+
   @override
   Widget build(BuildContext context) {
     final initialCenter = userPosition ?? const LatLng(41.9028, 12.4964); // Default to Rome
@@ -42,11 +65,12 @@ class TrackerMapView extends StatelessWidget {
     // Prepare Peer Polylines
     final List<Polyline> polylines = [];
 
-    // User trail polyline (thick 6px WCAG accessible)
-    if (userTrail.length >= 2) {
+    // User trail polylines (thick 6px WCAG accessible, split across paused intervals)
+    final userSegments = _splitIntoSegments(userTrail);
+    for (final segment in userSegments) {
       polylines.add(
         Polyline(
-          points: userTrail,
+          points: segment,
           strokeWidth: 6.0,
           color: userColor.withValues(alpha: 0.85),
         ),
@@ -55,13 +79,13 @@ class TrackerMapView extends StatelessWidget {
 
     // Remote peer trails (both active participants and historical paths)
     for (final peer in peers) {
-      final peerPoints = peer.trail.map((p) => p.toLatLng()).toList();
-      if (peerPoints.length >= 2) {
-        final double opacity = peer.isOnline ? 0.85 : 0.60;
-        final double strokeWidth = peer.isOnline ? 5.5 : 4.5;
+      final peerSegments = _splitIntoSegments(peer.trail);
+      final double opacity = peer.isOnline ? 0.85 : 0.60;
+      final double strokeWidth = peer.isOnline ? 5.5 : 4.5;
+      for (final segment in peerSegments) {
         polylines.add(
           Polyline(
-            points: peerPoints,
+            points: segment,
             strokeWidth: strokeWidth,
             color: peer.color.withValues(alpha: opacity),
           ),

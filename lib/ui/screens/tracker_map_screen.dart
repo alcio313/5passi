@@ -61,7 +61,7 @@ class _TrackerMapScreenState extends State<TrackerMapScreen> {
     final tracker = context.watch<TrackerProvider>();
     final userPos = tracker.currentLocation?.toLatLng();
     _checkInitialCenter(userPos);
-    final userTrail = tracker.myTrail.map((p) => p.toLatLng()).toList();
+    final userTrail = tracker.myTrail;
     final onlineCount = tracker.onlinePeers.length + 1;
 
     return Scaffold(

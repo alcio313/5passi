@@ -137,5 +137,69 @@ void main() {
       expect(restored.trail.first.lat, equals(41.900));
       expect(restored.trail.last.lat, equals(41.905));
     });
+
+    test('LocationPoint correctly parses isGap flag from web and json formats', () {
+      // 1. Web list format with isGap=1
+      final fromListWithGap = LocationPoint.fromJson([41.9028, 12.4964, 1, 0, 1700000000000]);
+      expect(fromListWithGap.isGap, isTrue);
+
+      // 2. Web list format without gap
+      final fromListNoGap = LocationPoint.fromJson([41.9028, 12.4964, 0, 0, 1700000000000]);
+      expect(fromListNoGap.isGap, isFalse);
+
+      // 3. Map format with coord array containing gap marker
+      final fromCoordWithGap = LocationPoint.fromJson({
+        'coord': [41.9028, 12.4964, 1],
+        'time': 1700000000000,
+      });
+      expect(fromCoordWithGap.isGap, isTrue);
+
+      // 4. Map format with explicit isGap: true
+      final fromMapExplicit = LocationPoint.fromJson({
+        'lat': 41.9028,
+        'lng': 12.4964,
+        'isGap': true,
+        'time': 1700000000000,
+      });
+      expect(fromMapExplicit.isGap, isTrue);
+    });
+
+    test('Trail points with isGap separate into disconnected segments', () {
+      // Simulating: segment 1 (p1 -> p2) -> pause -> resume with isGap -> segment 2 (p3 -> p4)
+      final trail = [
+        LocationPoint(lat: 41.900, lng: 12.400, timestamp: 1000),
+        LocationPoint(lat: 41.901, lng: 12.401, timestamp: 2000),
+        LocationPoint(lat: 41.905, lng: 12.405, timestamp: 3000, isGap: true),
+        LocationPoint(lat: 41.906, lng: 12.406, timestamp: 4000),
+      ];
+
+      // Segment splitting logic (matching TrackerMapView)
+      final List<List<LocationPoint>> segments = [];
+      List<LocationPoint> currentSegment = [];
+      for (final p in trail) {
+        if (p.isGap && currentSegment.isNotEmpty) {
+          if (currentSegment.length >= 2) {
+            segments.add(currentSegment);
+          }
+          currentSegment = [p];
+        } else {
+          currentSegment.add(p);
+        }
+      }
+      if (currentSegment.length >= 2) {
+        segments.add(currentSegment);
+      }
+
+      // Must produce 2 separate segments
+      expect(segments.length, equals(2));
+      // Segment 1: p1 and p2
+      expect(segments[0].length, equals(2));
+      expect(segments[0][0].lat, equals(41.900));
+      expect(segments[0][1].lat, equals(41.901));
+      // Segment 2: p3 and p4 (starting at p3 after the pause)
+      expect(segments[1].length, equals(2));
+      expect(segments[1][0].lat, equals(41.905));
+      expect(segments[1][1].lat, equals(41.906));
+    });
   });
 }

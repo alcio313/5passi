@@ -165,6 +165,7 @@ void onStartBackgroundService(ServiceInstance service) async {
   String? brokerUsername;
   String? brokerPassword;
   bool isTracking = false;
+  bool pendingGap = false;
 
   double? lastLat;
   double? lastLng;
@@ -235,7 +236,11 @@ void onStartBackgroundService(ServiceInstance service) async {
 
   service.on('set_tracking').listen((event) {
     if (event == null) return;
-    isTracking = event['tracking'] == true;
+    final newTracking = event['tracking'] == true;
+    if (newTracking && !isTracking && lastLat != null) {
+      pendingGap = true;
+    }
+    isTracking = newTracking;
 
     if (service is AndroidServiceInstance) {
       if (isTracking) {
@@ -244,6 +249,7 @@ void onStartBackgroundService(ServiceInstance service) async {
           content: 'Tracciamento attivo a schermo spento',
         );
       } else {
+        pendingGap = true;
         service.setForegroundNotificationInfo(
           title: '5passi ⏸️',
           content: 'Tracciamento in pausa',
@@ -272,9 +278,9 @@ void onStartBackgroundService(ServiceInstance service) async {
         ),
       );
 
-      // Distance filter (< 5m ignored to filter jitter)
+      // Distance filter (< 5m ignored to filter jitter unless resuming)
       bool broadcastNeeded = true;
-      if (lastLat != null && lastLng != null) {
+      if (!pendingGap && lastLat != null && lastLng != null) {
         final distance = Haversine.distanceInMeters(
           lastLat!,
           lastLng!,
@@ -301,6 +307,9 @@ void onStartBackgroundService(ServiceInstance service) async {
           );
         }
 
+        final bool isGap = pendingGap;
+        pendingGap = false;
+
         final posPayload = {
           'type': 'pos',
           'id': myId,
@@ -308,11 +317,12 @@ void onStartBackgroundService(ServiceInstance service) async {
           'color': myColorHex ?? '#0066FF',
           'lat': position.latitude,
           'lng': position.longitude,
-          'coord': [position.latitude, position.longitude],
+          'coord': [position.latitude, position.longitude, isGap ? 1 : 0],
           'speed': position.speed,
           'heading': position.heading,
           'accuracy': position.accuracy,
           'time': DateTime.now().millisecondsSinceEpoch,
+          'isGap': isGap,
         };
 
         await mqttService.broadcast(posPayload);

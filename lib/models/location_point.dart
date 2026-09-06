@@ -61,6 +61,14 @@ class LocationPoint {
       longitude = (map['lng'] as num? ?? 0.0).toDouble();
     }
 
+    bool isGapPoint = map['isGap'] == true;
+    if (!isGapPoint && map['coord'] is List) {
+      final coordList = map['coord'] as List;
+      if (coordList.length > 2 && (coordList[2] == 1 || coordList[2] == true)) {
+        isGapPoint = true;
+      }
+    }
+
     return LocationPoint(
       lat: latitude,
       lng: longitude,
@@ -70,7 +78,7 @@ class LocationPoint {
       timestamp: map['time'] is num
           ? (map['time'] as num).toInt()
           : (map['timestamp'] is num ? (map['timestamp'] as num).toInt() : DateTime.now().millisecondsSinceEpoch),
-      isGap: map['isGap'] == true,
+      isGap: isGapPoint,
     );
   }
 }
