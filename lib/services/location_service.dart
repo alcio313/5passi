@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
 import '../core/constants/app_config.dart';
@@ -81,6 +83,34 @@ class LocationService {
       return updated == LocationPermission.always;
     }
     return permission == LocationPermission.always;
+  }
+
+  /// Provides a continuous real-time GPS stream with platform-tuned settings
+  Stream<Position> getPositionStream({int distanceFilter = 4}) {
+    LocationSettings locationSettings;
+
+    if (!kIsWeb && Platform.isAndroid) {
+      locationSettings = AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: distanceFilter,
+        forceLocationManager: false,
+        intervalDuration: const Duration(seconds: 3),
+      );
+    } else if (!kIsWeb && Platform.isIOS) {
+      locationSettings = AppleSettings(
+        accuracy: LocationAccuracy.high,
+        activityType: ActivityType.fitness,
+        distanceFilter: distanceFilter,
+        pauseLocationUpdatesAutomatically: false,
+      );
+    } else {
+      locationSettings = LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: distanceFilter,
+      );
+    }
+
+    return Geolocator.getPositionStream(locationSettings: locationSettings);
   }
 
   /// Fetches a single GPS fix using high accuracy

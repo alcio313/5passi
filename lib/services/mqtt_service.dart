@@ -37,6 +37,7 @@ class MqttService {
 
   String? _roomId;
   String? _myId;
+  String? _clientId;
   String? _topicPrefix;
   String? _myTopic;
   String? _roomWildcardTopic;
@@ -67,6 +68,7 @@ class MqttService {
   Future<bool> connect({
     required String roomId,
     required String myId,
+    String? customClientId,
     String? brokerHost,
     int? port,
     bool? useTls,
@@ -77,6 +79,9 @@ class MqttService {
     _myId = myId.trim().isEmpty
         ? 'user-${DateTime.now().millisecondsSinceEpoch % 1000000}'
         : myId.trim();
+    _clientId = (customClientId != null && customClientId.trim().isNotEmpty)
+        ? customClientId.trim()
+        : _myId;
     _topicPrefix = '${AppConfig.topicPrefix}/$roomId';
     _myTopic = '$_topicPrefix/$_myId';
     _roomWildcardTopic = '$_topicPrefix/+';
@@ -168,9 +173,10 @@ class MqttService {
 
   Future<bool> _tryConnectCandidate(_MqttCandidate candidate) async {
     MqttServerClient? testClient;
+    final effectiveClientId = _clientId ?? _myId!;
     try {
       testClient =
-          MqttServerClient.withPort(candidate.host, _myId!, candidate.port);
+          MqttServerClient.withPort(candidate.host, effectiveClientId, candidate.port);
       testClient.logging(on: false);
       testClient.keepAlivePeriod = 20;
       testClient.autoReconnect = true;
@@ -184,7 +190,7 @@ class MqttService {
       }
 
       final connMessage = MqttConnectMessage()
-          .withClientIdentifier(_myId!)
+          .withClientIdentifier(effectiveClientId)
           .startClean()
           .withWillQos(MqttQos.atMostOnce);
 

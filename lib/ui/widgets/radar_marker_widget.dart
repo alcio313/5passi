@@ -53,7 +53,7 @@ class _RadarMarkerWidgetState extends State<RadarMarkerWidget>
           constraints: const BoxConstraints(maxWidth: 170),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: const Color(0xFF0F172A).withOpacity(0.92),
+            color: const Color(0xFF0F172A).withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: widget.color, width: 2),
             boxShadow: const [
@@ -108,8 +108,8 @@ class _RadarMarkerWidgetState extends State<RadarMarkerWidget>
                         height: 32,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: widget.color.withOpacity(
-                            (1.0 - (_controller.value)).clamp(0.0, 0.6),
+                          color: widget.color.withValues(
+                            alpha: (1.0 - (_controller.value)).clamp(0.0, 0.6),
                           ),
                         ),
                       ),
@@ -126,7 +126,7 @@ class _RadarMarkerWidgetState extends State<RadarMarkerWidget>
                   border: Border.all(color: Colors.white, width: 3),
                   boxShadow: [
                     BoxShadow(
-                      color: widget.color.withOpacity(0.8),
+                      color: widget.color.withValues(alpha: 0.8),
                       blurRadius: 10,
                       spreadRadius: 2,
                     ),

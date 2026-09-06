@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_config.dart';
+import '../core/utils/haversine.dart';
 import '../core/utils/room_slug.dart';
 import '../models/location_point.dart';
 import '../models/peer_user.dart';
@@ -43,6 +45,8 @@ class TrackerProvider extends ChangeNotifier {
   Timer? _peerCleanupTimer;
   Timer? _heartbeatTimer;
   Timer? _desktopSamplingTimer;
+  StreamSubscription<Position>? _positionSubscription;
+  StreamSubscription<Map<String, dynamic>?>? _bgLocationSubscription;
 
   // Getters
   String get myId => _myId;
@@ -169,7 +173,7 @@ class TrackerProvider extends ChangeNotifier {
     await _broadcastJoin();
 
     // Configure and start background service
-    BackgroundTrackingManager.updateServiceConfig(
+    await BackgroundTrackingManager.updateServiceConfig(
       roomId: _roomId,
       password: _roomPassword,
       myId: _myId,
@@ -182,9 +186,12 @@ class TrackerProvider extends ChangeNotifier {
 
     if (_isTracking) {
       await BackgroundTrackingManager.start();
-      _startDesktopSamplingIfNeeded();
+      _startLiveTracking();
       await fetchCurrentFix();
     }
+
+    // Notify room of our presence
+    await _broadcastJoin();
 
     // Start background timers
     _peerCleanupTimer?.cancel();
@@ -201,6 +208,110 @@ class TrackerProvider extends ChangeNotifier {
     return true;
   }
 
+  /// Starts real-time continuous GPS tracking stream in foreground and listens to background service
+  void _startLiveTracking() {
+    _stopLiveTracking();
+
+    // 1. Continuous native GPS stream
+    try {
+      _positionSubscription = locationService.getPositionStream(distanceFilter: 4).listen(
+        (Position position) {
+          if (!_isTracking || !_isInRoom) return;
+          final point = LocationPoint(
+            lat: position.latitude,
+            lng: position.longitude,
+            speed: position.speed,
+            heading: position.heading,
+            accuracy: position.accuracy,
+            timestamp: position.timestamp.millisecondsSinceEpoch,
+          );
+          _handleNewUserPosition(point);
+        },
+        onError: (error) {
+          debugPrint('⚠️ [TrackerProvider] Error in GPS stream: $error');
+        },
+      );
+    } catch (e) {
+      debugPrint('⚠️ [TrackerProvider] Failed to start position stream: $e');
+    }
+
+    // 2. Ingest points captured by background isolate (e.g. while phone screen was locked)
+    _bgLocationSubscription = BackgroundTrackingManager.locationUpdates.listen(
+      (Map<String, dynamic>? event) {
+        if (event == null || !_isInRoom || !_isTracking) return;
+        try {
+          final point = LocationPoint.fromJson(event);
+          _handleNewUserPosition(point);
+        } catch (_) {}
+      },
+    );
+
+    // 3. Fallback periodic sampling on desktop
+    _startDesktopSamplingIfNeeded();
+  }
+
+  /// Cancels live GPS streams and timers
+  void _stopLiveTracking() {
+    _positionSubscription?.cancel();
+    _positionSubscription = null;
+    _bgLocationSubscription?.cancel();
+    _bgLocationSubscription = null;
+    _desktopSamplingTimer?.cancel();
+    _desktopSamplingTimer = null;
+  }
+
+  /// Appends a new position to myTrail, updates currentLocation, and broadcasts to room
+  void _handleNewUserPosition(LocationPoint point) {
+    // Noise filter: ignore very inaccurate GPS fixes (>80m) if we already have a fix
+    if (point.accuracy != null && point.accuracy! > 80.0 && _currentLocation != null) {
+      return;
+    }
+
+    // Distance filter: ignore jitter (<3.5m)
+    if (_myTrail.isNotEmpty) {
+      final last = _myTrail.last;
+      final distance = Haversine.distanceInMeters(
+        last.lat,
+        last.lng,
+        point.lat,
+        point.lng,
+      );
+      if (distance < 3.5) {
+        return;
+      }
+    }
+
+    _currentLocation = point;
+    _myTrail.add(point);
+    notifyListeners();
+
+    // Broadcast position update to room
+    _broadcastPosition(point);
+
+    // Update persistent notification on Android
+    final accuracyStr = point.accuracy != null ? ' (±${point.accuracy!.toStringAsFixed(0)}m)' : '';
+    BackgroundTrackingManager.updateNotificationInfo(
+      title: '5passi • In Movimento',
+      content:
+          '${point.lat.toStringAsFixed(4)}, ${point.lng.toStringAsFixed(4)}$accuracyStr',
+    );
+  }
+
+  Future<void> _broadcastPosition(LocationPoint point) async {
+    await mqttService.broadcast({
+      'type': 'pos',
+      'id': _myId,
+      'name': _myName,
+      'color': '#${_myColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+      'lat': point.lat,
+      'lng': point.lng,
+      'speed': point.speed,
+      'heading': point.heading,
+      'accuracy': point.accuracy,
+      'time': point.timestamp,
+    });
+  }
+
   /// Toggles tracking state and updates background service & network peers
   Future<void> toggleTracking() async {
     _isTracking = !_isTracking;
@@ -209,11 +320,11 @@ class TrackerProvider extends ChangeNotifier {
     if (_isTracking) {
       await FeedbackService.playStartFeedback();
       await BackgroundTrackingManager.start();
-      _startDesktopSamplingIfNeeded();
+      _startLiveTracking();
       await fetchCurrentFix();
     } else {
       await FeedbackService.playStopFeedback();
-      _desktopSamplingTimer?.cancel();
+      _stopLiveTracking();
       BackgroundTrackingManager.stop();
     }
 
@@ -228,22 +339,7 @@ class TrackerProvider extends ChangeNotifier {
   Future<void> fetchCurrentFix() async {
     final point = await locationService.getCurrentPoint();
     if (point != null) {
-      _currentLocation = point;
-      _myTrail.add(point);
-      notifyListeners();
-
-      await mqttService.broadcast({
-        'type': 'pos',
-        'id': _myId,
-        'name': _myName,
-        'color': '#${_myColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
-        'lat': point.lat,
-        'lng': point.lng,
-        'speed': point.speed,
-        'heading': point.heading,
-        'accuracy': point.accuracy,
-        'time': point.timestamp,
-      });
+      _handleNewUserPosition(point);
     }
   }
 
@@ -337,13 +433,14 @@ class TrackerProvider extends ChangeNotifier {
     await mqttService.broadcast({'type': 'leave', 'id': _myId});
     _peerCleanupTimer?.cancel();
     _heartbeatTimer?.cancel();
-    _desktopSamplingTimer?.cancel();
+    _stopLiveTracking();
     BackgroundTrackingManager.stop();
     mqttService.disconnect();
     cryptoService.reset();
     _isInRoom = false;
     _peers.clear();
     _myTrail.clear();
+    _currentLocation = null;
     notifyListeners();
   }
 
@@ -351,7 +448,7 @@ class TrackerProvider extends ChangeNotifier {
   void dispose() {
     _peerCleanupTimer?.cancel();
     _heartbeatTimer?.cancel();
-    _desktopSamplingTimer?.cancel();
+    _stopLiveTracking();
     mqttService.dispose();
     super.dispose();
   }

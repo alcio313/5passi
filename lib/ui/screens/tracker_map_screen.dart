@@ -19,6 +19,18 @@ class TrackerMapScreen extends StatefulWidget {
 
 class _TrackerMapScreenState extends State<TrackerMapScreen> {
   final MapController _mapController = MapController();
+  bool _hasInitiallyCentered = false;
+
+  void _checkInitialCenter(LatLng? pos) {
+    if (pos != null && !_hasInitiallyCentered) {
+      _hasInitiallyCentered = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _mapController.move(pos, 16.5);
+        }
+      });
+    }
+  }
 
   void _recenterOnUser(LatLng? pos) {
     if (pos != null) {
@@ -48,6 +60,7 @@ class _TrackerMapScreenState extends State<TrackerMapScreen> {
   Widget build(BuildContext context) {
     final tracker = context.watch<TrackerProvider>();
     final userPos = tracker.currentLocation?.toLatLng();
+    _checkInitialCenter(userPos);
     final userTrail = tracker.myTrail.map((p) => p.toLatLng()).toList();
     final onlineCount = tracker.onlinePeers.length + 1;
 

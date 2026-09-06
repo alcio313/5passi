@@ -48,7 +48,7 @@ class TrackerMapView extends StatelessWidget {
         Polyline(
           points: userTrail,
           strokeWidth: 6.0,
-          color: userColor.withOpacity(0.85),
+          color: userColor.withValues(alpha: 0.85),
         ),
       );
     }
@@ -61,7 +61,7 @@ class TrackerMapView extends StatelessWidget {
           Polyline(
             points: peerPoints,
             strokeWidth: 5.0,
-            color: peer.color.withOpacity(0.8),
+            color: peer.color.withValues(alpha: 0.8),
           ),
         );
       }

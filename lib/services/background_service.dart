@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/app_config.dart';
 import '../core/utils/haversine.dart';
 import 'crypto_service.dart';
@@ -21,6 +22,12 @@ class BackgroundTrackingManager {
   /// Background service is only needed and supported on mobile (Android/iOS)
   static bool get isSupported =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
+  /// Emits location points registered by the background isolate to the UI isolate
+  static Stream<Map<String, dynamic>?> get locationUpdates {
+    if (!isSupported) return const Stream.empty();
+    return _service.on('location_update');
+  }
 
   /// Initializes the background service and notification channels
   static Future<void> initializeService() async {
@@ -63,7 +70,8 @@ class BackgroundTrackingManager {
   }
 
   /// Sends updated room/credentials context into the running background service isolate
-  static void updateServiceConfig({
+  /// and persists it to SharedPreferences to prevent race condition on isolate startup.
+  static Future<void> updateServiceConfig({
     required String roomId,
     required String password,
     required String myId,
@@ -72,9 +80,19 @@ class BackgroundTrackingManager {
     String? brokerHost,
     String? brokerUsername,
     String? brokerPassword,
-  }) {
+  }) async {
     if (!isSupported) return;
     try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('bg_room_id', roomId);
+      await prefs.setString('bg_password', password);
+      await prefs.setString('bg_my_id', myId);
+      await prefs.setString('bg_my_name', myName);
+      await prefs.setString('bg_my_color', myColorHex);
+      if (brokerHost != null) await prefs.setString('bg_broker_host', brokerHost);
+      if (brokerUsername != null) await prefs.setString('bg_broker_user', brokerUsername);
+      if (brokerPassword != null) await prefs.setString('bg_broker_pass', brokerPassword);
+
       _service.invoke('update_config', {
         'roomId': roomId,
         'password': password,
@@ -95,6 +113,7 @@ class BackgroundTrackingManager {
       final isRunning = await _service.isRunning();
       if (!isRunning) {
         await _service.startService();
+        await Future.delayed(const Duration(milliseconds: 250));
       }
       _service.invoke('set_tracking', {'tracking': true});
     } catch (_) {}
@@ -105,6 +124,17 @@ class BackgroundTrackingManager {
     if (!isSupported) return;
     try {
       _service.invoke('set_tracking', {'tracking': false});
+    } catch (_) {}
+  }
+
+  /// Updates persistent notification from foreground UI
+  static void updateNotificationInfo({required String title, required String content}) {
+    if (!isSupported) return;
+    try {
+      _service.invoke('update_notification', {
+        'title': title,
+        'content': content,
+      });
     } catch (_) {}
   }
 }
@@ -120,6 +150,7 @@ Future<bool> onIosBackground(ServiceInstance service) async {
 /// Entrypoint executed in a separate background Dart isolate on Android & iOS
 @pragma('vm:entry-point')
 void onStartBackgroundService(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
 
   final cryptoService = CryptoService();
@@ -139,17 +170,44 @@ void onStartBackgroundService(ServiceInstance service) async {
   double? lastLng;
   Timer? samplingTimer;
 
+  // Load initial configuration from SharedPreferences to avoid race condition
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    roomId = prefs.getString('bg_room_id');
+    password = prefs.getString('bg_password');
+    myId = prefs.getString('bg_my_id');
+    myName = prefs.getString('bg_my_name');
+    myColorHex = prefs.getString('bg_my_color');
+    brokerHost = prefs.getString('bg_broker_host');
+    brokerUsername = prefs.getString('bg_broker_user');
+    brokerPassword = prefs.getString('bg_broker_pass');
+
+    if (password != null && roomId != null && myId != null) {
+      await cryptoService.deriveKey(password: password, roomId: roomId);
+      if (!mqttService.isConnected) {
+        await mqttService.connect(
+          roomId: roomId,
+          myId: myId,
+          customClientId: '${myId}_bg',
+          brokerHost: brokerHost,
+          username: brokerUsername,
+          password: brokerPassword,
+        );
+      }
+    }
+  } catch (_) {}
+
   // Listen to control instructions from the UI
   service.on('update_config').listen((event) async {
     if (event == null) return;
-    roomId = event['roomId'] as String?;
-    password = event['password'] as String?;
-    myId = event['myId'] as String?;
-    myName = event['myName'] as String?;
-    myColorHex = event['myColorHex'] as String?;
-    brokerHost = event['brokerHost'] as String?;
-    brokerUsername = event['brokerUsername'] as String?;
-    brokerPassword = event['brokerPassword'] as String?;
+    roomId = event['roomId'] as String? ?? roomId;
+    password = event['password'] as String? ?? password;
+    myId = event['myId'] as String? ?? myId;
+    myName = event['myName'] as String? ?? myName;
+    myColorHex = event['myColorHex'] as String? ?? myColorHex;
+    brokerHost = event['brokerHost'] as String? ?? brokerHost;
+    brokerUsername = event['brokerUsername'] as String? ?? brokerUsername;
+    brokerPassword = event['brokerPassword'] as String? ?? brokerPassword;
 
     if (password != null && roomId != null && myId != null) {
       await cryptoService.deriveKey(password: password!, roomId: roomId!);
@@ -157,11 +215,21 @@ void onStartBackgroundService(ServiceInstance service) async {
         await mqttService.connect(
           roomId: roomId!,
           myId: myId!,
+          customClientId: '${myId!}_bg',
           brokerHost: brokerHost,
           username: brokerUsername,
           password: brokerPassword,
         );
       }
+    }
+  });
+
+  service.on('update_notification').listen((event) {
+    if (event == null) return;
+    if (service is AndroidServiceInstance) {
+      final title = event['title'] as String? ?? '5passi';
+      final content = event['content'] as String? ?? '';
+      service.setForegroundNotificationInfo(title: title, content: content);
     }
   });
 
@@ -190,8 +258,8 @@ void onStartBackgroundService(ServiceInstance service) async {
     service.stopSelf();
   });
 
-  // Background Sampling Loop (every 15 seconds)
-  samplingTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
+  // Background Sampling Loop (every 10 seconds for reliable position tracking)
+  samplingTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
     if (!isTracking || roomId == null || myId == null || !cryptoService.hasKey) {
       return;
     }
@@ -204,7 +272,7 @@ void onStartBackgroundService(ServiceInstance service) async {
         ),
       );
 
-      // Distance filter (<10m ignored)
+      // Distance filter (< 5m ignored to filter jitter)
       bool broadcastNeeded = true;
       if (lastLat != null && lastLng != null) {
         final distance = Haversine.distanceInMeters(
@@ -213,7 +281,7 @@ void onStartBackgroundService(ServiceInstance service) async {
           position.latitude,
           position.longitude,
         );
-        if (distance < AppConfig.minDistanceMeters) {
+        if (distance < 5.0) {
           broadcastNeeded = false;
         }
       }
@@ -226,7 +294,10 @@ void onStartBackgroundService(ServiceInstance service) async {
           await mqttService.connect(
             roomId: roomId!,
             myId: myId!,
+            customClientId: '${myId!}_bg',
             brokerHost: brokerHost,
+            username: brokerUsername,
+            password: brokerPassword,
           );
         }
 
