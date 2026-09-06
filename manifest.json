@@ -1,0 +1,35 @@
+{
+    "name": "5passi - Live Map Tracker",
+    "short_name": "5passi",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0b1120",
+    "theme_color": "#0b1120",
+    "description": "5passi - Tracciamento GPS in tempo reale protetto con crittografia E2EE e supporto schermo spento",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
