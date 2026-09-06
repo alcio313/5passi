@@ -17,7 +17,7 @@ import '../services/location_service.dart';
 import '../services/mqtt_service.dart';
 
 /// Central state manager orchestrating location tracking, cryptography, and peer networking
-class TrackerProvider extends ChangeNotifier {
+class TrackerProvider extends ChangeNotifier with WidgetsBindingObserver {
   final CryptoService cryptoService = CryptoService();
   late final MqttService mqttService;
   final LocationService locationService = LocationService();
@@ -49,6 +49,7 @@ class TrackerProvider extends ChangeNotifier {
   Timer? _saveDebounceTimer;
   StreamSubscription<Position>? _positionSubscription;
   StreamSubscription<Map<String, dynamic>?>? _bgLocationSubscription;
+  StreamSubscription? _incomingMessagesSubscription;
 
   // Getters
   String get myId => _myId;
@@ -78,7 +79,27 @@ class TrackerProvider extends ChangeNotifier {
     _myName = 'Utente-${_myId.substring(5)}';
     _myColor = AppColors.getColorForId(_myId);
     mqttService = MqttService(cryptoService: cryptoService);
+    mqttService.onReconnected = _onNetworkReconnected;
+    WidgetsBinding.instance.addObserver(this);
     _initIdentity();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isInRoom) {
+      debugPrint('📱 [TrackerProvider] App riattivata in primo piano! Richiesta sincronizzazione percorso...');
+      _broadcastSyncRequest();
+      if (_isTracking) {
+        fetchCurrentFix();
+      }
+    }
+  }
+
+  void _onNetworkReconnected() {
+    if (!_isInRoom) return;
+    debugPrint('🔄 [TrackerProvider] Riconnessione MQTT riuscita! Sincronizzazione percorsi in tempo reale...');
+    _broadcastJoin();
+    _broadcastSyncRequest();
   }
 
   Future<void> _initIdentity() async {
@@ -175,7 +196,9 @@ class TrackerProvider extends ChangeNotifier {
     await _loadRoomHistory();
 
     // Listen to incoming decrypted peer events
-    mqttService.incomingMessages.listen(_handleIncomingMessage);
+    _incomingMessagesSubscription?.cancel();
+    _incomingMessagesSubscription =
+        mqttService.incomingMessages.listen(_handleIncomingMessage);
 
     // Configure and start background service
     await BackgroundTrackingManager.updateServiceConfig(
@@ -369,13 +392,24 @@ class TrackerProvider extends ChangeNotifier {
     });
   }
 
+  /// Broadcasts a request to all peers (or a specific peer) to synchronize historical trails
+  Future<void> _broadcastSyncRequest({String target = 'all'}) async {
+    if (!_isInRoom || !isConnected) return;
+    await mqttService.broadcast({
+      'type': 'sync_request',
+      'id': _myId,
+      'target': target,
+    });
+  }
+
   void _handleIncomingMessage(Map<String, dynamic> data) {
     final String? type = data['type'] as String?;
     final String? peerId = data['id'] as String?;
     if (type == null || peerId == null || peerId == _myId) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    PeerUser peer = _peers.putIfAbsent(
+    final bool isExistingPeer = _peers.containsKey(peerId);
+    final PeerUser peer = _peers.putIfAbsent(
       peerId,
       () => PeerUser(
         id: peerId,
@@ -384,6 +418,9 @@ class TrackerProvider extends ChangeNotifier {
         lastSeen: now,
       ),
     );
+
+    // Detect if this peer was previously offline or is completely new to the session
+    final bool wasOffline = !isExistingPeer || !peer.isOnline || peer.hasLeft;
 
     if (data['name'] != null && (data['name'] as String).isNotEmpty) {
       peer.name = data['name'] as String;
@@ -420,6 +457,15 @@ class TrackerProvider extends ChangeNotifier {
         _saveRoomHistoryDebounced();
         break;
 
+      case 'sync_request':
+        // A peer (or the whole room) requests an immediate sync of current and past trails
+        final target = data['target'] as String?;
+        if (target == null || target == 'all' || target == _myId) {
+          debugPrint('📥 [TrackerProvider] Ricevuto sync_request da $peerId, sincronizzazione scia...');
+          _shareRoomHistoryWithJoiner();
+        }
+        break;
+
       case 'pos':
         peer.hasLeft = false;
         peer.lastSeen = now;
@@ -427,12 +473,23 @@ class TrackerProvider extends ChangeNotifier {
         peer.currentPosition = point;
         peer.trail.add(point);
         peer.isTracking = true;
+
+        // If this peer just transitioned from offline to online, request full trail sync immediately!
+        if (wasOffline) {
+          debugPrint('🛰️ [TrackerProvider] Peer $peerId ha inviato posizione ed è tornato ONLINE! Sincronizzazione percorso in tempo reale...');
+          _broadcastSyncRequest(target: peerId);
+          _shareRoomHistoryWithJoiner();
+        }
         _saveRoomHistoryDebounced();
         break;
 
       case 'status':
         peer.lastSeen = now;
         if (data['tracking'] != null) peer.isTracking = data['tracking'] == true;
+        if (wasOffline) {
+          _broadcastSyncRequest(target: peerId);
+          _shareRoomHistoryWithJoiner();
+        }
         break;
 
       case 'leave':
@@ -446,6 +503,12 @@ class TrackerProvider extends ChangeNotifier {
       case 'ping':
         peer.lastSeen = now;
         peer.hasLeft = false;
+        // If peer just came back online via heartbeat, request full trail sync immediately!
+        if (wasOffline) {
+          debugPrint('🛰️ [TrackerProvider] Peer $peerId è tornato ONLINE via heartbeat! Sincronizzazione percorso in tempo reale...');
+          _broadcastSyncRequest(target: peerId);
+          _shareRoomHistoryWithJoiner();
+        }
         break;
     }
 
@@ -489,17 +552,21 @@ class TrackerProvider extends ChangeNotifier {
     }
   }
 
-  /// Merges incoming points into a peer's trail, deduplicating by timestamp
+  /// Merges incoming points into a peer's trail, deduplicating by timestamp and coordinates
   void _mergePeerTrail(PeerUser peer, List<LocationPoint> incoming) {
     if (incoming.isEmpty) return;
     if (peer.trail.isEmpty) {
       peer.trail.addAll(incoming);
     } else {
-      final existingTimes = peer.trail.map((p) => p.timestamp).toSet();
+      final existingKeys = <String>{};
+      for (final p in peer.trail) {
+        existingKeys.add('${p.timestamp}_${p.lat.toStringAsFixed(6)}_${p.lng.toStringAsFixed(6)}');
+      }
       for (final p in incoming) {
-        if (!existingTimes.contains(p.timestamp)) {
+        final key = '${p.timestamp}_${p.lat.toStringAsFixed(6)}_${p.lng.toStringAsFixed(6)}';
+        if (!existingKeys.contains(key)) {
           peer.trail.add(p);
-          existingTimes.add(p.timestamp);
+          existingKeys.add(key);
         }
       }
       peer.trail.sort((a, b) => a.timestamp.compareTo(b.timestamp));
@@ -595,6 +662,8 @@ class TrackerProvider extends ChangeNotifier {
   Future<void> leaveRoom() async {
     await mqttService.broadcast({'type': 'leave', 'id': _myId});
     await _saveRoomHistory();
+    _incomingMessagesSubscription?.cancel();
+    _incomingMessagesSubscription = null;
     _saveDebounceTimer?.cancel();
     _peerCleanupTimer?.cancel();
     _heartbeatTimer?.cancel();
@@ -611,6 +680,8 @@ class TrackerProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _incomingMessagesSubscription?.cancel();
     _saveDebounceTimer?.cancel();
     _peerCleanupTimer?.cancel();
     _heartbeatTimer?.cancel();

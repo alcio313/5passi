@@ -37,11 +37,15 @@ class LocationPoint {
 
   factory LocationPoint.fromJson(dynamic json) {
     if (json is List) {
+      int ts = DateTime.now().millisecondsSinceEpoch;
+      if (json.length > 4 && json[4] is num) {
+        ts = (json[4] as num).toInt();
+      }
       return LocationPoint(
         lat: (json[0] as num).toDouble(),
         lng: (json[1] as num).toDouble(),
         isGap: json.length > 2 && (json[2] == 1 || json[2] == true),
-        timestamp: DateTime.now().millisecondsSinceEpoch,
+        timestamp: ts,
       );
     }
 

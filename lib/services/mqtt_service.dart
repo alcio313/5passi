@@ -35,6 +35,7 @@ class MqttService {
   final CryptoService cryptoService;
   MqttClient? _client;
   StreamSubscription? _updatesSubscription;
+  VoidCallback? onReconnected;
 
   String? _roomId;
   String? _myId;
@@ -324,10 +325,12 @@ class MqttService {
 
   void _onConnected() {
     _subscribeToRoom();
+    onReconnected?.call();
   }
 
   void _onAutoReconnected() {
     _subscribeToRoom();
+    onReconnected?.call();
   }
 
   void _onDisconnected() {}
